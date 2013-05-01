@@ -110,6 +110,26 @@ class JsExtensionsSpec extends Specification {
       success
     }
 
+    "update all by pathvalue" in {
+      js.updateAll{ (path, js) => 
+        JsPathExtension.hasKey(path) == Some("key4111") 
+      }{ (path, js) =>
+        val JsString(str) = js
+        JsString(str + path.path.last)
+      } must beEqualTo(
+        Json.obj(
+          "key1" -> Json.obj(
+            "key11" -> "TO_FIND", 
+            "key12" -> 123L, 
+            "key13" -> JsNull
+          ),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND/key4111")))
+        )
+      )
+      success
+    }
 
     "setM" in {
       Await.result(

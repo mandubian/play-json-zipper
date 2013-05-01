@@ -409,13 +409,13 @@ trait JsZipper {
 
   def find(fn: JsZipper => Boolean): JsZipper = 
     streamDeepLFRU.collectFirst{ 
-      case zipper if fn(zipper) => zipper
+      case zipper if zipper.isPlain && fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
   def findNext(fn: JsZipper => Boolean): JsZipper = 
     // skips this in the stream
     streamDeepRFU.tail.collectFirst{ 
-      case zipper if fn(zipper) => zipper
+      case zipper if zipper.isPlain && fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
   def findByValue(fn: JsValue => Boolean): JsZipper = findByNode( node => fn(node.value) )
@@ -445,7 +445,7 @@ trait JsZipper {
 
   def findAll(fn: JsZipper => Boolean): Stream[JsZipper] = 
     streamDeepLFRU.collect{
-      case zipper if fn(zipper) => zipper
+      case zipper if zipper.isPlain && fn(zipper) => zipper
     }
 
   def findAllByValue(fn: JsValue => Boolean): Stream[JsZipper] = 
@@ -828,13 +828,19 @@ object JsZipper extends JsZipperOps {
 
 
 object JsPathExtension{
-  def hasKey(path: JsPath): Option[String] = path.path.last match{
-    case KeyPathNode(key) => Some(key)
-    case _                => None
+  def hasKey(path: JsPath): Option[String] = {
+    if(path.path.isEmpty) None
+    else path.path.last match {
+      case KeyPathNode(key) => Some(key)
+      case _                => None
+    }
   }
 
-  def hasIdx(path: JsPath): Option[Int] = path.path.last match{
-    case IdxPathNode(idx) => Some(idx)
-    case _                => None
+  def hasIdx(path: JsPath): Option[Int] = {
+    if(path.path.isEmpty) None
+    else path.path.last match {
+      case IdxPathNode(idx) => Some(idx)
+      case _                => None
+    }
   }
 }

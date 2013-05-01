@@ -1,90 +1,116 @@
-# Playing with Play2.2-SNAPSHOT SCALA JSON API Stand-alone (until Play2.2 is released)
+# Play2 Json manipulation extensions based on JsZipper
 
-In a very recent Pull Request, play-json has been modularized in Play2.2-SNAPSHOT master as play-iteratees.
+JsZipper is a new tool allowing much more complex and powerful manipulations of Json structure.
+JsZipper is inspired by the [Zipper](http://en.wikipedia.org/wiki/Zipper_(data_structure)) concept introduced by [Gerard Huet](http://en.wikipedia.org/wiki/G%C3%A9rard_Huet) in 1997. This is a specific implementation for Play Json.
 
-It means: 
+Here are some examples to show what can be done:
 
-- You can take Play2.1 Scala Json API as a stand-alone library and keep using Json philosophy promoted by [Play Framework](http://www.playframework.org) anywhere.
-- `play-json` module is stand-alone in terms of dependencies but is a part & parcel of Play2.2 so it will evolve and follow Play2.x releases (and following versions) always ensuring full compatibility with play ecosystem.
-- `play-json` module has 3 ultra lightweight dependencies:
-     - `play-functional`, 
-     - `play-datacommons`
-     - `play-iteratees`
-
-These are pure Scala generic pieces of code from Play framework so no Netty or whatever dependencies in it.  
-You can then import `play-json` in your project without any fear of bringing unwanted deps.
-
-`play-json` will be released with future Play2.2 certainly so meanwhile, I provide a build published in my Maven Github repository.  
-Even if the version is _SNAPSHOT_, be aware that this is the version released in Play2.1.0.  
-This API has reached a good stability level. Enhancements and bug corrections will be brought to it but it's production-ready right now.
-
-## Adding play-json 2.2-SNAPSHOT in your dependencies
-
-In your `Build.scala`, add:
+We'll use following Json Object.
 
 ```scala
-import sbt._
-import Keys._
-
-object ApplicationBuild extends Build {
-
-  val mandubianRepo = Seq(
-    "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
-    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
-  )
-
-  lazy val playJsonAlone = Project(
-    BuildSettings.buildName, file("."),
-    settings = BuildSettings.buildSettings ++ Seq(
-      resolvers ++= mandubianRepo,
-      libraryDependencies ++= Seq(
-        "play"        %% "play-json" % "2.2-SNAPSHOT",
-        "org.specs2"  %% "specs2" % "1.13" % "test",
-        "junit"        % "junit" % "4.8" % "test"
-      )
-    )
-  )
-}
+scala> val js = Json.obj(
+  "key1" -> Json.obj(
+    "key11" -> "TO_FIND",
+    "key12" -> 123L,
+    "key13" -> JsNull
+  ),
+  "key2" -> 123,
+  "key3" -> true,
+  "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
+)
+js: play.api.libs.json.JsObject = {"key1":{"key11":"TO_FIND","key12":123,"key13":null},"key2":123,"key3":true,"key4":["TO_FIND",345.6,"test",{"key411":{"key4111":"TO_FIND"}}]}
 ```
 
-## Using play-json 2.2-SNAPSHOT in your code:
+# Basic manipulations
 
-Just import the following and get everything from Play2.1 Json API:
+## Setting multiple paths/values 
 
 ```scala
-import play.api.libs.json._
-import play.api.libs.functional._
+scala> js.set(
+  (__ \ "key4")(2) -> JsNumber(765.23),
+  (__ \ "key1" \ "key12") -> JsString("toto")
+)
+res1: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND","key12":"toto","key13":null},"key2":123,"key3":true,"key4":["TO_FIND",345.6,765.23,{"key411":{"key4111":"TO_FIND"}}]}
+```
 
-case class EucalyptusTree(col:Int, row: Int)
+## Deleting multiple paths/values
 
-object EucalyptusTree{
-  implicit val fmt = Json.format[EucalyptusTree]
-}
+```scala
+scala> js.delete(
+  (__ \ "key4")(2),
+  (__ \ "key1" \ "key12"),
+  (__ \ "key1" \ "key13")
+)
+res2: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND"},"key2":123,"key3":true,"key4":["TO_FIND",345.6,{"key411":{"key4111":"TO_FIND"}}]}
+```
 
-case class Koala(name: String, home: EucalyptusTree)
+## Finding paths/values according to a filter
 
-object Koala{
-  implicit val fmt = Json.format[Koala]
-}
-  
-val kaylee = Koala("kaylee", EucalyptusTree(10, 23))
-
-println(Json.prettyPrint(Json.toJson(kaylee)))
-
-Json.fromJson[Koala](
-  Json.obj(
-    "name" -> "kaylee", 
-    "home" -> Json.obj(
-      "col" -> 10, 
-      "row" -> 23
-    )
+```scala
+scala> js.findAll( _ == JsString("TO_FIND") ).toList
+res5: List[(play.api.libs.json.JsPath, play.api.libs.json.JsValue)] = List(
+  (/key1/key11,"TO_FIND"), 
+  (/key4(0),"TO_FIND"), 
+  (/key4(3)/key411/key4111,"TO_FIND")
 )
 ```
 
-> Using `play-json`, you can get some bits of [Play Framework](http://www.playframework.org) pure Web philosophy.  
-> Naturally, to unleash its full power, don't hesitate to dive into [Play Framework](http://www.playframework.org) and discover 100% full Web Reactive Stack ;)
+## Updating values according to a filter based on value
 
-Thanks a lot to Play Framework team for promoting play-json as stand-alone module!  
-Lots of interesting features incoming soon ;)
+```scala
+scala> js.updateAll( (_:JsValue) == JsString("TO_FIND") ){ js =>
+  val JsString(str) = js
+  JsString(str + "2")
+}
+res6: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND2","key12":123,"key13":null},"key2":123,"key3":true,"key4":["TO_FIND2",345.6,"test",{"key411":{"key4111":"TO_FIND2"}}]}
+```
+
+## Updating values according to a filter based on path+value
+
+```scala
+scala> js.updateAll{ (path, js) =>
+  JsPathExtension.hasKey(path) == Some("key4111")
+}{ (path, js) =>
+  val JsString(str) = js
+  JsString(str + path.path.last)
+}
+res1: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND","key12":123,"key13":null},"key2":123,"key3":true,"key4":["TO_FIND",345.6,"test",{"key411":{"key4111":"TO_FIND/key4111"}}]}
+```
+
+# Let's be funnier with Monads now
+
+Let's use `Future` as our Monad because it's... coooool to do things in the future ;)
+
+Imagine you call several services returning Future[JsValue] and you want to build/update a JsObject from it. Until now, if you wanted to do that with Play2/Json, it was quite tricky and required some code.
+
+Here is what you can do now.
+
+## Updating multiple values at given paths
+
+```scala
+scala> val maybeJs = js.setM[Future](
+  (__ \ "key4")(2)        -> future{ JsNumber(765.23) },
+  (__ \ "key1" \ "key12") -> future{ JsString("toto") }
+)
+maybeJs: scala.concurrent.Future[play.api.libs.json.JsValue] = scala.concurrent.impl.Promise$DefaultPromise@6beb722d
+
+scala> Await.result(maybeJs, Duration("2 seconds"))
+res4: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND","key12":"toto","key13":null},"key2":123,"key3":true,"key4":["TO_FIND",345.6,765.23,{"key411":{"key4111":"TO_FIND"}}]}
+```
+
+## Update multiple values in the future according to a filter
+
+```scala
+scala> val maybeJs = js.updateAllM[Future]( (_:JsValue) == JsString("TO_FIND") ){ js =>
+     |   future {
+     |     val JsString(str) = js
+     |     JsString(str + "2")
+     |   }
+     | }
+maybeJs: scala.concurrent.Future[play.api.libs.json.JsValue] = scala.concurrent.impl.Promise$DefaultPromise@35a4bb1a
+
+scala> Await.result(maybeJs, Duration("2 seconds"))
+res6: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND2","key12":123,"key13":null},"key2":123,"key3":true,"key4":["TO_FIND2",345.6,"test",{"key411":{"key4111":"TO_FIND2"}}]}
+```
 
 Have fun!
