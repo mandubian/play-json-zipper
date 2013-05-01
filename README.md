@@ -1,7 +1,10 @@
-# Play2 Json manipulation extensions based on JsZipper
+# Play2 Json manipulation extensions based on JsZipper (EXPERIMENTAL)
 
 JsZipper is a new tool allowing much more complex and powerful manipulations of Json structure.
-JsZipper is inspired by the [Zipper](http://en.wikipedia.org/wiki/Zipper_(data_structure)) concept introduced by [Gerard Huet](http://en.wikipedia.org/wiki/G%C3%A9rard_Huet) in 1997. This is a specific implementation for Play Json.
+
+JsZipper is inspired by the [Zipper](http://en.wikipedia.org/wiki/Zipper_\(data_structure\)) concept introduced by [Gerard Huet](http://en.wikipedia.org/wiki/G%C3%A9rard_Huet) in 1997. 
+
+This is a specific implementation for Play Json.
 
 Here are some examples to show what can be done:
 
@@ -76,7 +79,8 @@ scala> js.updateAll{ (path, js) =>
 }
 res1: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND","key12":123,"key13":null},"key2":123,"key3":true,"key4":["TO_FIND",345.6,"test",{"key411":{"key4111":"TO_FIND/key4111"}}]}
 ```
-
+<br/>
+<br/>
 # Let's be funnier with Monads now
 
 Let's use `Future` as our Monad because it's... coooool to do things in the future ;)
