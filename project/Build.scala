@@ -16,8 +16,6 @@ object ApplicationBuild extends Build {
       scalaVersion := "2.10.0",
       libraryDependencies ++= Seq(
         "play"        %% "play-json" % "2.2-SNAPSHOT",
-        "org.scalaz"  %% "scalaz-core" % "7.0.0-M8",
-        "org.scalaz"  %% "scalaz-effect" % "7.0.0-M8",
         "org.specs2"  %% "specs2" % "1.13" % "test",
         "junit"        % "junit" % "4.8" % "test"
       )

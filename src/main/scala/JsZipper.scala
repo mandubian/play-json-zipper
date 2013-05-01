@@ -3,47 +3,7 @@ package play.api.libs.json
 import scala.util.{Try, Success, Failure}
 import scala.annotation.tailrec
 
-sealed trait Node {
-  def value: JsValue
-
-  def filter(fn: JsValue => Boolean) = if(fn(value)) this else Node.empty
-}
-
-object Node {
-  val empty = Node.Empty
-
-  case object Empty extends Node {
-    override val value = JsUndefined("undef")
-  }
-
-  case class Error(error: (JsPath, String)) extends Node {
-    override val value = JsUndefined("error")
-  }
-
-  def apply(key: String, value: JsValue): Node = KeyNode(key, value)
-  def apply(value: JsValue): Node = PlainNode(value)
-
-  def unapply(node: Node): Option[JsValue] = Some(node.value)
-
-  def copy(node: Node) = node match {
-    case Node.Empty           => Node.Empty
-    case KeyNode(key, value)  => KeyNode(key, value)
-    case PlainNode(value)     => PlainNode(value)
-    case Error(e)             => Error(e)
-  }
-
-  def copy(node: Node, newValue: JsValue) = node match {
-    case Node.Empty        => Node.Empty
-    case KeyNode(key, _)  => KeyNode(key, newValue)
-    case PlainNode(_)     => PlainNode(newValue)
-    case Error(e)             => Error(e)
-  }
-}
-
-case class KeyNode(val key: String, override val value: JsValue) extends Node
-case class PlainNode(override val value: JsValue) extends Node
-
-sealed trait JsZipper {
+trait JsZipper {
   import JsZipper._
 
   def focus:   Node
@@ -54,20 +14,30 @@ sealed trait JsZipper {
   def value = focus.value
 
   def isPlain = this match {
-    case JsZipper.Empty => false
-    case JsZipper.Error(_) => false
+    case _:JsZipperEmpty => false
+    case _:JsZipperError => false
     case _ => true
   }
 
   def isEmpty = this match {
-    case JsZipper.Empty => true
+    case _:JsZipperEmpty => true
     case _ => false
   }
 
   def isError = this match {
-    case JsZipper.Error(_) => true
+    case _:JsZipperError => true
     case _ => false
   }
+
+  def isObject = this.isPlain && (focus.value match {
+    case _: JsObject => true
+    case _           => false
+  })
+
+  def isArray = this.isPlain && (focus.value match {
+    case _: JsArray  => true
+    case _           => false
+  })
 
   def isLeaf = this.isPlain && (focus.value match {
     case _: JsObject => false
@@ -102,18 +72,18 @@ sealed trait JsZipper {
 
   def left: JsZipper = lefts match {
     case head #:: tail   => JsZipper(head, tail, focus #:: rights, parents)
-    case Stream.Empty => JsZipper.Empty
+    case Stream.Empty    => JsZipper.Empty
   }
 
   def right: JsZipper = rights match {
     case head #:: tail   => JsZipper(head, focus #:: lefts, tail, parents)
-    case Stream.Empty => JsZipper.Empty
+    case Stream.Empty    => JsZipper.Empty
   }
 
   def up: JsZipper = parents match {
     case (plefts, parent, prights) #:: ancestors => 
       val js = reify(focus, lefts, rights, parent)
-      JsZipper(
+      JsZipper (
         Node.copy(parent, js), 
         plefts, prights, ancestors
       )
@@ -122,7 +92,7 @@ sealed trait JsZipper {
 
   def first: JsZipper = {
     def loop(zip: JsZipper): JsZipper = zip.left match {
-      case JsZipper.Empty => zip
+      case _:JsZipperEmpty => zip
       case lft => loop(zip.left)
     }
     loop(this)
@@ -130,21 +100,21 @@ sealed trait JsZipper {
 
   def last: JsZipper = {
     def loop(zip: JsZipper): JsZipper = zip.right match {
-      case JsZipper.Empty => zip
+      case _:JsZipperEmpty => zip
       case lft => loop(zip.right)
     }
     loop(this)
   }
 
-  def root: JsZipper = this.up match {
-    case JsZipper.Empty    => this
-    case e: JsZipper.Error => e
+  def root: JsZipper = up match {
+    case _:JsZipperEmpty   => this
+    case e:JsZipper.Error  => e
     case parent            => parent.root
   }
 
   def bottomLeft: JsZipper = {
     def loop(zip: JsZipper): JsZipper = zip.down match {
-      case JsZipper.Empty => zip
+      case _:JsZipperEmpty => zip
       case dwn => loop(dwn)
     }
     loop(this)
@@ -152,7 +122,7 @@ sealed trait JsZipper {
 
   def bottomRight: JsZipper = {
     def loop(zip: JsZipper): JsZipper = zip.last.down match {
-      case JsZipper.Empty => zip
+      case _:JsZipperEmpty => zip
       case dwn => loop(dwn)
     }
     loop(this)
@@ -282,6 +252,36 @@ sealed trait JsZipper {
     case Node.Empty => JsZipper.Error(path -> "Can't have multiple JsValues on root")
   }
 
+  def insertDown(node: Node): JsZipper = value match {
+    case obj: JsObject =>
+      if(obj.fields.isEmpty) node match {
+        case KeyNode(key, value) => 
+          JsZipper(
+            node,
+            Stream.Empty,
+            Stream.Empty,
+            (lefts, focus, rights) #:: parents
+          )
+        case _ => sys.error("Can't insert/down value in JsObject without key")
+      }
+      else down.last.insertRightNode(_ => node)
+
+    case arr: JsArray =>
+      if(arr.value.isEmpty) node match {
+        case PlainNode(value) => 
+          JsZipper(
+            node,
+            Stream.Empty,
+            Stream.Empty,
+            (lefts, focus, rights) #:: parents
+          )
+        case _ => sys.error("Can't insert/down key/value in JsArray")
+      }
+      else down.last.insertRightNode(_ => node)
+
+    case _ => sys.error("Can't insert/down in value")
+  }
+
   def delete: JsZipper = rights match {
     case r #:: righters => parent match {
       case Node(parent) => parent match {
@@ -321,10 +321,6 @@ sealed trait JsZipper {
     case t              => t
   }
 
-  // def filterByValue(fn: JsValue => Boolean): JsZipper = 
-  //   if(this.isPlain && fn(this.focus.value)) this
-  //   else JsZipper.Empty
-
   /* Horizontal streams */
   def streamLeft: Stream[JsZipper]  = 
     this.left match {
@@ -362,7 +358,7 @@ sealed trait JsZipper {
       case rgt => this #:: rgt.streamDeepLeftFocusRightUp
     }
   }
-  def streamDeeRFU: Stream[JsZipper] = streamDeepRightFocusUp
+  def streamDeepRFU: Stream[JsZipper] = streamDeepRightFocusUp
 
   def streamDeepLeftFocusRightUp: Stream[JsZipper] = {
     if(isLeaf) streamDeepRightFocusUp
@@ -370,15 +366,32 @@ sealed trait JsZipper {
   }
   def streamDeepLFRU: Stream[JsZipper] = streamDeepLeftFocusRightUp
 
-  def streamDeepRightFocusUp(preLoop: JsZipper => JsZipper): Stream[JsZipper] = {
-    val z = preLoop(this)
-    z.right match {
-      case JsZipper.Empty => 
-        z.up match {
-          case JsZipper.Empty => Stream(z)
-          case lup            => z #:: lup.streamDeepRightFocusUp 
-        }
-      case rgt => z #:: rgt.streamDeepLeftFocusRightUp
+  def streamDeepLeftFocusRightUp(filter: JsZipper => Boolean)(map: JsZipper => JsZipper): Stream[JsZipper] = {
+    if(isLeaf) streamDeepRightFocusUp(filter)(map)
+    else bottomLeft.streamDeepRightFocusUp(filter)(map)
+  }
+
+  def streamDeepRightFocusUp(filter: JsZipper => Boolean)(map: JsZipper => JsZipper): Stream[JsZipper] = {    
+    if(filter(this)) {
+      val z = map(this)
+      z.right match {
+        case JsZipper.Empty => 
+          z.up match {
+            case JsZipper.Empty => Stream(z)
+            case lup            => z #:: lup.streamDeepRightFocusUp(filter)(map) 
+          }
+        case rgt => z #:: rgt.streamDeepLeftFocusRightUp(filter)(map)
+      }
+    }
+    else {
+      this.right match {
+        case JsZipper.Empty => 
+          this.up match {
+            case JsZipper.Empty => Stream.Empty
+            case lup            => lup.streamDeepRightFocusUp(filter)(map) 
+          }
+        case rgt => rgt.streamDeepLeftFocusRightUp(filter)(map)
+      }
     }
   }
   
@@ -388,88 +401,247 @@ sealed trait JsZipper {
       case JsZipper.Empty => Stream.Empty
       case zip            => 
         val str = zip #:: zip.streamRight
+        // perf ++ ???
         str ++ str.flatMap( _.down.streamWideFocusRightDown )
     }
   }
   def streamWideFRD: Stream[JsZipper] = streamWideFocusRightDown
 
-  def findIncluded(fn: JsZipper => Boolean): JsZipper = 
+  def find(fn: JsZipper => Boolean): JsZipper = 
     streamDeepLFRU.collectFirst{ 
       case zipper if fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
-  def findExcluded(fn: JsZipper => Boolean): JsZipper = 
+  def findNext(fn: JsZipper => Boolean): JsZipper = 
     // skips this in the stream
-    streamDeeRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{ 
       case zipper if fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
-  def findValueIncluded(fn: JsValue => Boolean): JsZipper = findNodeIncluded( node => fn(node.value) )
-  def findValueExcluded(fn: JsValue => Boolean): JsZipper = findNodeExcluded( node => fn(node.value) )
+  def findByValue(fn: JsValue => Boolean): JsZipper = findByNode( node => fn(node.value) )
+  def findNextByValue(fn: JsValue => Boolean): JsZipper = findNextByNode( node => fn(node.value) )
 
-  def findNodeIncluded(fn: Node => Boolean): JsZipper = 
+  def findByNode(fn: Node => Boolean): JsZipper = 
     streamDeepLFRU.collectFirst{ 
       case zipper if zipper.isPlain && fn(zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findNodeExcluded(fn: Node => Boolean): JsZipper = 
+  def findNextByNode(fn: Node => Boolean): JsZipper = 
     // skips this in the stream
-    streamDeeRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{ 
       case zipper if zipper.isPlain && fn(zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findPathNodeIncluded(fn: (JsPath, Node) => Boolean): JsZipper = 
+  def findByPathNode(fn: (JsPath, Node) => Boolean): JsZipper = 
     streamDeepLFRU.collectFirst{ 
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findPathNodeNextExcluded(fn: (JsPath, Node) => Boolean): JsZipper = 
+  def findNextByPathNode(fn: (JsPath, Node) => Boolean): JsZipper = 
     // skips this in the stream
-    streamDeeRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{ 
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findPath(path: JsPath): JsZipper = 
-    streamWideFRD.collectFirst{
-      case zipper if zipper.isPlain && zipper.path == path => zipper
-    } getOrElse JsZipper.Empty
+  def findAll(fn: JsZipper => Boolean): Stream[JsZipper] = 
+    streamDeepLFRU.collect{
+      case zipper if fn(zipper) => zipper
+    }
 
-  def findAll(fn: JsValue => Boolean): Stream[JsZipper] = 
+  def findAllByValue(fn: JsValue => Boolean): Stream[JsZipper] = 
     streamDeepLFRU.collect{
       case zipper if zipper.isPlain && fn(zipper.focus.value) => zipper
     }
 
-  def findAllPathValue(fn: (JsPath, JsValue) => Boolean): Stream[JsZipper] = 
+  def findAllByPathValue(fn: (JsPath, JsValue) => Boolean): Stream[JsZipper] = 
     streamDeepLFRU.collect{
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus.value) => zipper
     }
 
-  def updateAll(findFn: JsValue => Boolean)(updateFn: JsValue => JsValue): JsZipper = {
+  def findPath(path: JsPath): JsZipper = {
     @tailrec
-    def step(zipper: JsZipper): JsZipper = {      
-      zipper match {
-        case JsZipper.Empty => JsZipper.Empty
-        case found          => 
-          val updated = found.update(updateFn)
-
-          updated.findValueExcluded(findFn) match {
-            case JsZipper.Empty  => updated
-            case found           => step(updated)
+    def step(currentPath: List[PathNode], currentZipper: JsZipper): JsZipper = currentPath match {
+      case Nil       => currentZipper.up
+      case List(p)   => p match {
+        case KeyPathNode(pkey) => 
+          (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
+            case KeyNode(key, _) if(key == pkey) => zipper
+          } } match {
+            case None         => JsZipper.Empty // not found
+            case Some(zipper) => zipper
           }
-      } 
+        case IdxPathNode(idx) =>
+          (currentZipper #:: currentZipper.streamRight).drop(idx) match {
+            case Stream.Empty  => JsZipper.Empty // not found
+            case head #:: _    => head
+          }
+        case _ => JsZipper.Empty // TODO (recursive path???)
+      }
+      case p :: tail => 
+        p match {
+          case KeyPathNode(pkey) => 
+            (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
+              case KeyNode(key, _) if(key == pkey) => zipper
+            } } match {
+              case None         => JsZipper.Empty // not found
+              case Some(zipper) => step(tail, zipper.down)
+            }
+          case IdxPathNode(idx) =>
+            (currentZipper #:: currentZipper.streamRight).drop(idx) match {
+              case Stream.Empty  => JsZipper.Empty // not found
+              case head #:: _    => step(tail, head.down)
+            }
+          case _ => JsZipper.Empty // TODO (recursive path???)
+        }
     }
-
-    step(this.findValueIncluded(findFn))
+    step(path.path, this.down)
+    /*streamWideFRD.collectFirst{
+      case zipper if zipper.isPlain && zipper.path == path => zipper
+    } getOrElse JsZipper.Empty*/
   }
 
-  /*def map(fn: JsZipper => JsZipper): JsZipper = 
-  //def filter(fn: JsZipper => Boolean): Stream[JsZipper] = streamDeepLFRU.filter(fn)
+  def createOrUpdatePath(path: JsPath, f: JsValue => JsValue): JsZipper = {
+    @tailrec
+    def step(currentPath: List[PathNode], currentZipper: JsZipper, parentZipper: JsZipper): JsZipper = currentPath match {
+      case Nil       => currentZipper.up.update(f)
+      case List(p)   => p match {
+        case KeyPathNode(pkey) => 
+          currentZipper match {
+            case JsZipper.Empty => // inserting in empty object
+              parentZipper.insertDown(KeyNode(pkey, f(Json.obj())))
+            case _ => 
+              (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
+                case KeyNode(key, _) if(key == pkey) => zipper
+              } } match {
+                case None => // not found so inserting
+                  if(currentZipper.parent.isObject) currentZipper.insertKeyValue( pkey -> f(Json.obj()) )
+                  else JsZipper.Empty
+                case Some(zipper) => zipper.update(f(zipper.value))
+              }
+          }          
 
-  def withFilter(fn: JsZipper => Boolean): JsZipper = {
+        case IdxPathNode(idx) =>
+          currentZipper match {
+            case JsZipper.Empty => // inserting in empty object
+              parentZipper.insertDown(PlainNode(f(Json.arr())))
+            case _ => 
+              (currentZipper #:: currentZipper.streamRight).drop(idx) match {
+                case Stream.Empty | JsZipper.Empty #:: _ => // not found
+                  if(currentZipper.parent.isArray) currentZipper.last.insertValueRight(f(Json.arr()))
+                  else JsZipper.Empty
+                case head #:: _    => head.update(f)
+              }
+          }
+        case _ => JsZipper.Empty // TODO (recursive path???)
+      }
+      case p :: next :: tail => 
+        p match {
+          case KeyPathNode(pkey) => 
+            (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
+              case KeyNode(key, _) if(key == pkey) => zipper
+            } } match {
+              case None => // not found
+                if(parentZipper.focus.isObject){
+                  val n = next match {
+                    case _:KeyPathNode => Json.obj()
+                    case _:IdxPathNode => Json.arr()
+                    case _ => JsNull
+                  }
+                  if(parentZipper.focus.isEmptyObjArr){
+                    val z = parentZipper.insertDown(KeyNode(pkey, n))
+                    step(next :: tail, z.down, z)
+                  }
+                  else {
+                    val z = currentZipper.last.insertKeyValue( pkey -> n ).right
+                    step(next :: tail, z.down, z)
+                  }
+                }
+                else JsZipper.Empty
+              case Some(zipper) => step(next :: tail, zipper.down, zipper)
+            }
+          case IdxPathNode(idx) =>
+            (currentZipper #:: currentZipper.streamRight).drop(idx) match {
+              case Stream.Empty | JsZipper.Empty #:: _ => // not found
+                if(parentZipper.focus.isArray) {
+                  val n = next match {
+                    case _:KeyPathNode => Json.obj()
+                    case _:IdxPathNode => Json.arr()
+                    case _             => JsNull
+                  }
+                  if(parentZipper.focus.isEmptyObjArr){
+                    val z = parentZipper.insertDown(PlainNode(n))
+                    step(next :: tail, z.down, z)
+                  } else {
+                    val z = currentZipper.last.insertValueRight(n).right
+                    step(next :: tail, z.down, z)
+                  }
+                }
+                else JsZipper.Empty
+              case head #:: _    => step(next :: tail, head.down, head)
+            }
+          case _ => JsZipper.Empty // TODO (recursive path???)
+        }
+    }
+    step(path.path, this.down, this).root
+  }
     
-  }*/
+  def createOrUpdatePath(path: JsPath, js: JsValue): JsZipper = createOrUpdatePath(path, _ => js)
 
-  def filterMap(filterFn: JsZipper => Boolean)(mapFn: JsZipper => JsZipper): JsZipper = {
+  def createOrUpdate(pathValues: Seq[(JsPath, JsValue)]): JsZipper = {
+    @tailrec
+    def step(pathValues: List[(JsPath, JsValue)], zipper: JsZipper): JsZipper = {
+      pathValues match {
+        case Nil          => JsZipper.Empty
+        case List(pv)     => zipper.createOrUpdatePath(pv._1, pv._2)
+        case head :: tail => step(tail, zipper.createOrUpdatePath(head._1, head._2))
+      }
+    }
+    
+    step(pathValues.toList, this)
+  }  
+
+  def createOrUpdate(pathValue: (JsPath, JsValue), pathValues: (JsPath, JsValue)*): JsZipper =
+    createOrUpdate(Seq(pathValue) ++ pathValues)
+
+
+  def deletePaths(paths: Seq[JsPath]): JsZipper = {
+    @tailrec
+    def step(zipper: JsZipper, currPaths: List[JsPath]): JsZipper = {  
+      currPaths match {
+        case Nil           => zipper
+        case List(p)       => zipper.findPath(p) match {
+          case JsZipper.Empty => zipper.root
+          case found          => found.delete.root
+        }
+        case head :: tail => zipper.findPath(head) match {
+          case JsZipper.Empty => zipper.root
+          case found          => step(found.delete.root, tail)
+        }
+      }
+    }
+
+    step(this, paths.toList)
+  }
+
+  /* mimicing collection but temporary functions */
+  def head = this
+  def tail = streamDeepLFRU.tail
+  def tailDefined = this match {
+    case JsZipper.Empty => false
+    case _              => true
+  }
+
+  def foreach[U](f: JsZipper => U) = streamDeepLFRU.foreach(f)
+  //def filter(fn: JsZipper => Boolean): Stream[JsZipper] = findAll(fn)
+  def withFilter(fn: JsZipper => Boolean): JsZipperWithFilter = new JsZipperWithFilter(fn)
+  def mapThrough(fn: JsZipper => JsZipper): JsZipper = filterMapThrough(_ => true)(fn)
+  def mapThroughByValue(mapFn: JsValue => JsValue): JsZipper =
+    filterMapThrough( _ => true )( zipper => zipper.update(mapFn) )
+
+  def filterMapThroughByValue(filterFn: JsValue => Boolean)(mapFn: JsValue => JsValue): JsZipper =
+    filterMapThrough( zipper => filterFn(zipper.value) )( zipper => zipper.update(mapFn) )
+
+  def filterMapThrough(filterFn: JsZipper => Boolean)(mapFn: JsZipper => JsZipper): JsZipper = {
     @tailrec
     def step(zipper: JsZipper): JsZipper = {      
       zipper match {
@@ -477,14 +649,36 @@ sealed trait JsZipper {
         case found          => 
           val updated = mapFn(found)
 
-          updated.findExcluded(filterFn) match {
+          updated.findNext(filterFn) match {
             case JsZipper.Empty  => updated
-            case found           => step(updated)
+            case found           => step(found)
           }
       } 
     }
 
-    step(this.findIncluded(filterFn))
+    step(find(filterFn))
+  }
+
+  def filterDeleteThrough(filterFn: JsZipper => Boolean): JsZipper = {
+    @tailrec
+    def step(zipper: JsZipper): JsZipper = {      
+      zipper match {
+        case JsZipper.Empty => JsZipper.Empty
+        case found          => 
+          val next = found.delete
+          if(filterFn(next)) step(next)
+          else next.findNext(filterFn) match {
+            case JsZipper.Empty  => next
+            case found           => step(found)
+          }
+      } 
+    }
+
+    step(find(filterFn))
+  }
+
+  final class JsZipperWithFilter(filterFn: JsZipper => Boolean)  {
+    def mapThrough(mapFn: JsZipper => JsZipper): JsZipper = JsZipper.this.filterMapThrough(filterFn)(mapFn)
   }
 
   def pathValue: (JsPath, JsValue) = (path, focus.value)
@@ -495,6 +689,27 @@ sealed trait JsZipper {
 
 trait JsZipperOps {
   def zipStream(js: JsValue): Stream[JsZipper] = JsZipper(js).streamDeepLFRU
+}
+
+trait JsZipperEmpty extends JsZipper {
+  val focus: Node = Node.Empty
+  val lefts: JsZipper.Siblings = Stream.Empty
+  val rights: JsZipper.Siblings = Stream.Empty
+  val parents: JsZipper.Parents = Stream.Empty
+
+  override def toString = 
+    s"""JsZipper.Empty(focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
+}
+
+trait JsZipperError extends JsZipper { 
+  val error: (JsPath, String)
+  override val focus: Node = Node.Error(error)
+  override val lefts: JsZipper.Siblings = Stream.Empty
+  override val rights: JsZipper.Siblings = Stream.Empty
+  override val parents: JsZipper.Parents = Stream.Empty
+
+  override def toString = 
+    s"""JsZipper.Error(error: $error, focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
 }
 
 object JsZipper extends JsZipperOps {
@@ -510,25 +725,8 @@ object JsZipper extends JsZipperOps {
       val parents = Stream.empty
     }
 
-  case object Empty extends JsZipper {
-    val focus = Node.Empty
-    val lefts = Stream.Empty
-    val rights = Stream.Empty
-    val parents = Stream.Empty
-
-    override def toString = 
-      s"""JsZipper.Empty(focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
-  }
-
-  case class Error(error: (JsPath, String)) extends JsZipper { 
-    override val lefts = Stream.Empty
-    override val rights = Stream.Empty
-    override val parents = Stream.Empty
-    override val focus = Node.Error(error)
-
-    override def toString = 
-      s"""JsZipper.Error(error: $error, focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
-  }
+  case object Empty extends JsZipperEmpty
+  case class Error(override val error: (JsPath, String)) extends JsZipperError
 
   def apply(theFocus: Node, theLefts: Siblings, theRights: Siblings, theParents: Parents) =
     new JsZipper {
@@ -549,7 +747,7 @@ object JsZipper extends JsZipperOps {
 
   def mergeSiblingsAsObj(siblings: Siblings): JsObject = 
     JsObject(siblings.reverse.foldLeft(Seq[(String, JsValue)]()){ (seq, n) => n match {
-      case KeyNode(key, value) => seq :+ (key -> value) 
+      case KeyNode(key, value) => (key -> value) +: seq
       case _                   => seq
     }})
 
@@ -568,7 +766,7 @@ object JsZipper extends JsZipperOps {
   def reify(node: Node, lefts: Siblings, rights: Siblings, parent: Node): JsValue =
     (parent.value, node) match {
       case (JsObject(_), KeyNode(key, value)) =>         
-        mergeSiblingsAsObj(lefts) +   
+        mergeSiblingsAsObjLeft(lefts) +   
         (key -> value) ++
         mergeSiblingsAsObj(rights)
 
@@ -612,48 +810,22 @@ object JsZipper extends JsZipperOps {
     }
   }
 
+  def build(init: JsZipper)(pathValues: Seq[(JsPath, JsValue)]): JsZipper = init.createOrUpdate(pathValues)
+
+  def buildJsObject(pathValues: Seq[(JsPath, JsValue)]): JsZipper =
+    build(JsZipper(Json.obj()))(pathValues)
+
+  def buildJsObject(pathValue: (JsPath, JsValue), pathValues: (JsPath, JsValue)*): JsZipper =
+    buildJsObject(Seq(pathValue) ++ pathValues)
+
+  def buildJsArray(pathValues: Seq[(JsPath, JsValue)]): JsZipper =
+    build(JsZipper(Json.arr()))(pathValues)
+
+  def buildJsArray(pathValue: (JsPath, JsValue), pathValues: (JsPath, JsValue)*): JsZipper =
+    buildJsArray(Seq(pathValue) ++ pathValues)
+
 }
 
-object JsProcess {
-  import com.clarifi.machines._  
-  import Plan._
-
-  def find(f: JsValue => Boolean): Process[JsZipper, JsZipper] = {
-    def step(zipper: JsZipper): Process[JsZipper, JsZipper] = {      
-      zipper match {
-        case JsZipper.Empty => Stop
-        case found          => Emit( found, () => step(found.findValueExcluded(f)) )
-      }
-    }
-
-    await[JsZipper] map(_.findValueIncluded(f)) flatMap(step)
-  } 
-
-  def update(findFn: JsValue => Boolean)(updateFn: JsValue => JsValue): Process[JsZipper, JsZipper] = {
-    def step(zipper: JsZipper): Process[JsZipper, JsZipper] = {      
-      zipper match {
-        case JsZipper.Empty => Stop
-        case found          => 
-          val updated = found.update(updateFn)
-
-          updated.findValueExcluded(findFn) match {
-            case JsZipper.Empty  => emit(updated) >> Stop
-            case found           => Emit( found, () => step(found) )
-          }
-      } 
-    }
-
-    await[JsZipper] map(_.findValueIncluded(findFn)) flatMap(step)
-  }
-    
-  def last[A]: Process[A,A] = {
-    def step[A](a: A): Process[A, A] = {
-      await[A] orElse (emit(a) >> Stop) flatMap step
-    }
-
-    await[A] flatMap(step(_:A))
-  }
-}
 
 object JsPathExtension{
   def hasKey(path: JsPath): Option[String] = path.path.last match{

@@ -3,11 +3,12 @@ package play.api.libs.json
 import org.specs2.mutable._
 import play.api.libs.json._
 import play.api.libs.json.Json._
+import play.api.libs.json.syntax._
 
 import scala.util.control.Exception._
 import java.text.ParseException
 
-object JsZipperSpec extends Specification {
+object JsZipperMSpec extends Specification {
 
   val js = Json.obj(
     "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
@@ -17,9 +18,9 @@ object JsZipperSpec extends Specification {
   )
 
 
-  "JsZipper" should {
+  "JsZipperM[Option]" should {
     "go through the whole tree" in {
-      val zipper = JsZipper(js)
+      val zipper = JsZipperM[Option](js)
 
       zipper.value must beEqualTo(js)
       zipper.lefts must beEqualTo(Stream.Empty)
@@ -126,7 +127,7 @@ object JsZipperSpec extends Specification {
     }
 
     "get path" in {
-      val zipper = JsZipper(js)
+      val zipper = JsZipperM[Option](js)
 
       zipper.down.left.path must throwA[NoSuchElementException]
       zipper.down.left.pathSafe must beNone
@@ -140,7 +141,7 @@ object JsZipperSpec extends Specification {
     }
 
     "find path" in {
-      val zipper = JsZipper(js)
+      val zipper = JsZipperM[Option](js)
 
       zipper.findPath(__ \ "key1" \ "key11").value must beEqualTo(JsString("value11"))
       zipper.findPath(__ \ "key2").value must beEqualTo(JsNumber(123))
@@ -151,117 +152,52 @@ object JsZipperSpec extends Specification {
       zipper.findPath(__).value must beEqualTo(zipper.value)
     }
 
-    "update" in {
-      val zipper = JsZipper(js)
-      val d11 = zipper.down.right
-      val d11bis = d11.update(JsString("toto"))
-      d11bis.focus must beEqualTo(KeyNode("key2", JsString("toto")))
+    "update node" in {
+      val zipper = JsZipperM[Option](js)
+      
+      val z = zipper.down.right.update(Some(JsString("toto")))
 
-      val jsAfter = Json.obj(
+      z.map(_.root.value) must beEqualTo(Some(Json.obj(
         "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
         "key2" -> "toto",
         "key3" -> true,
         "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      )
-      d11bis.up.focus must beEqualTo(Node(jsAfter))
+      )))
 
-      val d130 = zipper.down.right.right.right.down
-      val d130bis = d130.update(JsNumber(123L))
-      val jsAfter2 = Json.obj(
+    }
+
+    "insertLeft node" in {
+      val zipper = JsZipperM[Option](js)
+      
+      val z = zipper.down.right.right.right.down.right.insertValueLeft(Some(JsString("toto")))
+
+      z.map(_.root.value) must beEqualTo(Some(Json.obj(
         "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
         "key2" -> 123,
         "key3" -> true,
-        "key4" -> Json.arr(123L, 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      )
-      d130bis.root.focus must beEqualTo(Node(jsAfter2))
-
-      zipper.down.right.update(Json.arr("tata", 234.45)).
-            right.right.down.right.right.right.down
-            .update(JsBoolean(false)).root.focus must beEqualTo(
-        Node(Json.obj(
-          "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-          "key2" -> Json.arr("tata", 234.45),
-          "key3" -> true,
-          "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> false))
-        ))
-      )
-
-      val jsAfter3 = Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> "133",
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      )
-
-      d11.update( js => js match {
-        case JsNumber(nb) => JsString((nb + 10).toString)
-        case js => js
-      }).root.value must beEqualTo(jsAfter3)
-
-      val jsAfter4 = Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "tata" -> "key2",
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      )
-
-      d11.updatePathNode( (path, node) => JsPathExtension.hasKey(path) match {
-        case Some(key) => KeyNode("tata", JsString(key))
-        case None      => node
-      }).root.value must beEqualTo(jsAfter4)
+        "key4" -> Json.arr("value41", "toto", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      )))
 
     }
 
-    "insertLeft" in {
-      val arr = Json.arr("toto", 123L, false)
-      val zipper1 = JsZipper(arr)
-      zipper1.insertValueLeft(JsNumber(123.45)) must throwA[RuntimeException]
+    "insertRight node" in {
+      val zipper = JsZipperM[Option](js)
+      
+      val z = zipper.down.right.right.right.down.right.insertValueRight(Some(JsString("toto")))
 
-      zipper1.down.insertValueLeft(JsNumber(123.45)).up.focus must beEqualTo(Node(Json.arr(123.45, "toto", 123L, false)))
-      zipper1.down.right.insertValueLeft(JsNumber(123.45)).up.focus must beEqualTo(Node(Json.arr("toto", 123.45, 123L, false)))
-      zipper1.down.right.insertValueLeft(JsNumber(123.45)).up.focus must beEqualTo(Node(Json.arr("toto", 123.45, 123L, false)))
+      z.map(_.root.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 123,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "toto", "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      )))
 
-      val obj = Json.obj("key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull))
-      val zipper2 = JsZipper(obj)
-      zipper2.insertValueLeft(JsString("toto")) must throwA[RuntimeException] 
-      zipper2.down.down.insertValueLeft(JsString("toto")) must beEqualTo(JsZipper.Error( __ \ "key1" \ "key11" -> "can't add a value to JsObject, expects KeyNode(String, JsValue)"))
-      zipper2.down.down.insertKeyValue("key10" -> JsString("toto")).up.focus must beEqualTo(KeyNode("key1", Json.obj("key10" -> "toto", "key11" -> "value11", "key12" -> 123L, "key13" -> JsNull)))
-
-      zipper1.down.right.insertLeftPathNode{ (path, node) => 
-        JsPathExtension.hasIdx(path) match {
-          case Some(idx) => Node(JsString(node.value.toString + idx))
-          case None      => Node.Empty
-        }
-      }.root.value must beEqualTo(Json.arr("toto", "1231", 123L, false))
-    }
-
-    "insertRight" in {
-      val arr = Json.arr("toto", 123L, false)
-      val zipper1 = JsZipper(arr)
-      zipper1.insertValueRight(JsNumber(123.45)) must throwA[RuntimeException]
-
-      zipper1.down.insertValueRight(Json.obj("toto" -> "tata")).root.value must beEqualTo(Json.arr("toto", Json.obj("toto" -> "tata"), 123L, false))
-      zipper1.down.right.insertValueRight(Json.arr(1, 2, 3)).root.value must beEqualTo(Json.arr("toto", 123L, Json.arr(1, 2 ,3), false))
-      zipper1.down.right.right.insertValueRight(JsNumber(123.45)).root.value must beEqualTo(Json.arr("toto", 123L, false, 123.45))
-
-      val obj = Json.obj("key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull))
-      val zipper2 = JsZipper(obj)
-      zipper2.insertValueRight(JsString("toto")) must throwA[RuntimeException] 
-      zipper2.down.down.insertValueRight(JsString("toto")) must beEqualTo(JsZipper.Error( __ \ "key1" \ "key11" -> "can't add a value to JsObject, expects KeyNode(String, JsValue)"))
-      zipper2.down.down.insertKeyValue("key10" -> JsString("toto")).up.focus must beEqualTo(KeyNode("key1", Json.obj("key11" -> "value11", "key10" -> "toto", "key12" -> 123L, "key13" -> JsNull)))
-
-      zipper1.down.right.insertRightPathNode{ (path, node) => 
-        JsPathExtension.hasIdx(path) match {
-          case Some(idx) => Node(JsString(node.value.toString + idx))
-          case None      => Node.Empty
-        }
-      }.root.value must beEqualTo(Json.arr("toto", 123L, "1231", false))
     }
 
     "delete" in {
       val arr = Json.arr("toto", 123L, false)
-      val zipper = JsZipper(arr)
-      zipper.delete must beEqualTo(JsZipper.Empty)
+      val zipper = JsZipperM[Option](arr)
+      zipper.delete must beEqualTo(JsZipperM.Empty[Option]())
       zipper.down.delete.root.value must beEqualTo(Json.arr(123L, false))
       zipper.down.delete.delete.root.value must beEqualTo(Json.arr(false))
     }
@@ -279,7 +215,7 @@ object JsZipperSpec extends Specification {
         "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
       )
 
-      val zipper = JsZipper(js)
+      val zipper = JsZipperM[Option](js)
       //zipper.findByValueLeftDown( _ == JsString("value11") ) must beEqualTo(JsZipper.Empty)
       zipper.bottomLeft.path must beEqualTo( __ \ 'key1 \ 'key11)
       zipper.bottomLeft.value must beEqualTo( JsString("TO_FIND") )
@@ -301,48 +237,6 @@ object JsZipperSpec extends Specification {
       zipper4.path must beEqualTo( (__ \ 'key4)(3) \ 'key411 \ 'key4111 )
     }
 
-    "find by path" in {
-      val js = Json.obj(
-        "key1" -> Json.obj(
-          "key11" -> "TO_FIND", 
-          "key12" -> 123L, 
-          "key13" -> JsNull
-        ),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
-      )
-  
-      val zipper = JsZipper(js)
-
-      val a = zipper.findPath( __ \ 'key1 \ 'key11 )
-      val b = zipper.bottomLeft
-
-      a.focus must beEqualTo(b.focus)
-      a.path must beEqualTo(b.path)
-      //println(zipper.streamWideFRD.toList.mkString("\n\n"))
-    }
-
-    "find by path/node" in {
-      val js = Json.obj(
-        "key1" -> Json.obj(
-          "key11" -> "TO_FIND", 
-          "key12" -> 123L, 
-          "key13" -> JsNull
-        ),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
-      )
-  
-      val zipper = JsZipper(js)
-
-      val res = zipper.findByPathNode( (path, node) => path == (__ \ 'key4)(0) && node.value == JsString("TO_FIND") ) 
-      val witness = zipper.findPath( (__ \ 'key4)(0) )
-      res.focus must beEqualTo(witness.focus)
-      res.path must beEqualTo(witness.path)
-    }    
-
     "find all" in {
       val js = Json.obj(
         "key1" -> Json.obj(
@@ -355,14 +249,14 @@ object JsZipperSpec extends Specification {
         "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
       )
 
-      JsZipper(js).findAllByValue( _ == JsString("TO_FIND") ).map(_.pathValue).toList must beEqualTo(
+      JsZipperM[Option](js).findAllByValue( _ == JsString("TO_FIND") ).map(_.pathValue).toList must beEqualTo(
         List(
           __ \ 'key1 \ 'key11 -> JsString("TO_FIND"),
           (__ \ 'key4)(0) -> JsString("TO_FIND"),
           (__ \ 'key4)(3) \ 'key411 \ 'key4111 -> JsString("TO_FIND")
         )
       )
-      JsZipper(js).findAllByPathValue{ (path, value) => 
+      JsZipperM[Option](js).findAllByPathValue{ (path, value) => 
         path == (__ \ 'key4)(3) \ 'key411 \ 'key4111 && value == JsString("TO_FIND")
       }.map(_.pathValue).toList must beEqualTo(
         List(
@@ -383,10 +277,14 @@ object JsZipperSpec extends Specification {
         "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
       )
 
-      val zipper = JsZipper(js)
+      val zipper = JsZipperM[Option](js)
 
-      val res = zipper.findByValue( _ == JsString("TO_FIND") ).update{ js => val JsString(str) = js; JsString(str + "2") }.root
-      res.focus.value must beEqualTo(Json.obj(
+      val res = 
+        zipper.findByValue( _ == JsString("TO_FIND") )
+              .update{ (js: JsValue) => 
+                val JsString(str) = js; Some(JsString(str + "2")) 
+              }.map(_.root)
+      res.map(_.focus.value) must beEqualTo(Some(Json.obj(
         "key1" -> Json.obj(
           "key11" -> "TO_FIND2", 
           "key12" -> 123L, 
@@ -395,7 +293,7 @@ object JsZipperSpec extends Specification {
         "key2" -> 123,
         "key3" -> true,
         "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
-      ))
+      )))
     }
 
     "multiple find update by value" in {
@@ -410,71 +308,180 @@ object JsZipperSpec extends Specification {
         "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
       )
 
-      var zipper = JsZipper(js).findByValue( _ == JsString("TO_FIND") )
+      var zipper = Option(JsZipperM[Option](js).findByValue( _ == JsString("TO_FIND") ))
       var res = zipper
-      while(!zipper.isEmpty) {
-        res = zipper.update{ js => val JsString(str) = js; JsString(str + "2") }
-        zipper = res.findNextByValue( _ == JsString("TO_FIND") )
+      while(!zipper.get.isEmpty) {
+        res = zipper flatMap (_.update{ (js:JsValue) => val JsString(str) = js; Some(JsString(str + "2")) })
+        zipper = res map (_.findNextByValue( _ == JsString("TO_FIND") ))
       }
-
-      println(res.root)
-    }
-
-    "foreach" in {
-      val js = Json.obj(
-        "key1" -> Json.obj(
-          "key11" -> "TO_FIND", 
-          "key12" -> 123L, 
-          "key13" -> JsNull
-        ),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
-      )
-
-      JsZipper(js).foreach( x => println("foreach:"+x) )
-    }
-
-    "withFilter/mapThrough" in {
-      val js = Json.obj(
-        "key1" -> Json.obj(
-          "key11" -> "TO_FIND", 
-          "key12" -> 123L, 
-          "key13" -> JsNull
-        ),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND")))
-      )
-
-      JsZipper(js)
-          .withFilter( zipper => zipper.value == JsString("TO_FIND") )
-          .mapThrough( zipper => zipper.update{ js => val JsString(str) = js; JsString(str + "2") })
-          .last
-          .root
-          .value must beEqualTo(
-        Json.obj(
-          "key1" -> Json.obj(
-            "key11" -> "TO_FIND2", 
-            "key12" -> 123L, 
-            "key13" -> JsNull
-          ),
-          "key2" -> 123,
-          "key3" -> true,
-          "key4" -> Json.arr("TO_FIND2", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND2")))
-        )
-      )
-
-      success
+      println(res.map(_.root))
     }
 
     "update by path" in {
-      JsZipper(js).createOrUpdate(
-        __ \ "key1" \ "key11" -> JsString("toto"),
-        __ \ "key1" \ "key12" -> JsNumber(234),
-        (__ \ "key4")(0)      -> JsBoolean(true),
-        (__ \ "key4")(2)      -> Json.arr(1, 2, 3)
-      ).value must beEqualTo(
+      JsZipperM[Option](js).createOrUpdate(
+        __ \ "key1" \ "key11" -> Some(JsString("toto")),
+        __ \ "key1" \ "key12" -> Some(JsNumber(234)),
+        (__ \ "key4")(0)      -> Some(JsBoolean(true)),
+        (__ \ "key4")(2)      -> Some(Json.arr(1, 2, 3))
+      ).map(_.value) must beEqualTo(
+        Some(Json.obj(
+          "key1" -> Json.obj("key11" -> "toto", "key12" -> 234, "key13" -> JsNull),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr(true, 345.6, Json.arr(1, 2, 3), Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+        ))
+      )
+
+    }
+
+    "createOrUpdate path" in {
+      val zipper = JsZipperM[Option](js)
+
+      zipper.createOrUpdatePath(
+        __ \ "key1" \ "key11",
+        { (js:JsValue) => 
+          val JsString(str) = js
+          Some(JsString(str+ "_toto"))
+        }
+      ).map(_.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11_toto", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 123,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      )))
+
+      zipper.createOrUpdatePath(
+        __ \ "key2",
+        { (js:JsValue) => 
+          val JsNumber(nb) = js
+          Some(JsNumber(nb + 5))
+        }
+      ).map(_.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 128,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      )))
+      
+      zipper.createOrUpdatePath(
+        (__ \ "key4")(1),
+        { (js:JsValue) => 
+          val JsNumber(nb) = js
+          Some(JsNumber(nb + 3.0))
+        }
+      ).map(_.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 123,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 348.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      )))
+
+      zipper.createOrUpdatePath(
+        (__ \ "key4")(3) \ "key411" \ "key4111",
+        { (js:JsValue) => 
+          val JsNumber(nb) = js
+          Some(JsNumber(nb + 3.0))
+        }
+      ).map(_.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 123,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 990.654)))
+      )))
+
+      zipper.createOrUpdatePath(
+        __,
+        { (js:JsValue) => 
+          Some(JsString("toto"))
+        }
+      ).map(_.value) must beEqualTo(Some(JsString("toto")))
+
+      zipper.createOrUpdatePath(
+        (__ \ "key4")(5),
+        { (_:JsValue) => Some(JsBoolean(true)) }
+      ).map(_.value) must beEqualTo(Some(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> 123,
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)), true)
+      )))
+    }
+
+    "create from scratch" in {
+      JsZipperM[Option](Json.obj())
+        .createOrUpdatePath( 
+          __ \ "key1" \ "key11", (_:JsValue) => Some(JsString("toto")) ).map(_.value) must beEqualTo(
+          Some(Json.obj("key1" -> Json.obj("key11" -> "toto")))
+        )
+
+      JsZipperM[Option](Json.obj())
+        .createOrUpdatePath( 
+          (__ \ "key1")(0) \ "key11", (_:JsValue) => Some(JsString("toto")) ).map(_.value) must beEqualTo(
+          Some(Json.obj("key1" -> Json.arr(Json.obj("key11" -> "toto"))))
+        )
+
+      JsZipperM[Option](Json.obj())
+        .createOrUpdatePath( 
+          (__ \ "key1")(1) \ "key11", (_:JsValue) => Some(JsNumber(123L)) ).map(_.value) must beEqualTo(
+          Some(Json.obj("key1" -> Json.arr(Json.obj("key11" -> 123L))))
+        )
+
+      JsZipperM[Option](Json.arr())
+        .createOrUpdatePath( __(0) \ "key1" \ "key11", (_:JsValue) => Some(JsNumber(123L)) ).map(_.value) must beEqualTo(
+          Some(Json.arr(Json.obj("key1" -> Json.obj("key11" -> 123L))))
+        )
+    }
+
+    "build" in {
+      JsZipperM.buildJsObject[Option]( 
+        __ \ "key1" \ "key11" -> Some(JsString("toto")),
+        __ \ "key1" \ "key12" -> Some(JsNumber(123L)),
+        (__ \ "key2")(0)      -> Some(JsBoolean(true)),
+        __ \ "key3"           -> Some(Json.arr(1, 2, 3))
+      ).map(_.value) must beEqualTo(
+        Some(Json.obj(
+          "key1" -> Json.obj(
+            "key11" -> JsString("toto"),
+            "key12" -> JsNumber(123L)
+          ),
+          "key2" -> Json.arr(true),
+          "key3" -> Json.arr(1, 2, 3)
+        )))
+
+      JsZipperM.buildJsArray[Option](
+         __(0) -> Some(JsNumber(123.45)),
+         __(1) -> Some(JsString("toto"))
+      ).map(_.value) must beEqualTo(
+        Some(Json.arr(123.45, "toto"))
+      )
+    }
+  }
+
+  "JsZipperM[Future]" should {
+    import scala.concurrent._
+    import scala.concurrent.duration._
+    import ExecutionContext.Implicits.global
+
+    "update node" in {
+      val zipper = JsZipperM[Future](js)
+      
+      val z = zipper.down.right.update(future{ JsString("toto") })
+
+      Await.result(z.map(_.root.value), Duration("2 seconds")) must beEqualTo(Json.obj(
+        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
+        "key2" -> "toto",
+        "key3" -> true,
+        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
+      ))
+    }
+
+    "update by path" in {
+      Await.result(JsZipperM[Future](js).createOrUpdate(
+        __ \ "key1" \ "key11" -> future{ JsString("toto") },
+        __ \ "key1" \ "key12" -> future{ JsNumber(234) },
+        (__ \ "key4")(0)      -> future{ JsBoolean(true) },
+        (__ \ "key4")(2)      -> future{ Json.arr(1, 2, 3) }
+      ).map(_.value), Duration("2 seconds")) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj("key11" -> "toto", "key12" -> 234, "key13" -> JsNull),
           "key2" -> 123,
@@ -482,112 +489,15 @@ object JsZipperSpec extends Specification {
           "key4" -> Json.arr(true, 345.6, Json.arr(1, 2, 3), Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
         )
       )
-
-    }
-
-
-    "createOrUpdate path" in {
-      val zipper = JsZipper(js)
-
-      zipper.createOrUpdatePath(
-        __ \ "key1" \ "key11",
-        { js => 
-          val JsString(str) = js
-          JsString(str+ "_toto")
-        }
-      ).value must beEqualTo(Json.obj(
-        "key1" -> Json.obj("key11" -> "value11_toto", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      ))
-
-      zipper.createOrUpdatePath(
-        __ \ "key2",
-        { js => 
-          val JsNumber(nb) = js
-          JsNumber(nb + 5)
-        }
-      ).value must beEqualTo(Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> 128,
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      ))
-      
-      zipper.createOrUpdatePath(
-        (__ \ "key4")(1),
-        { js => 
-          val JsNumber(nb) = js
-          JsNumber(nb + 3.0)
-        }
-      ).value must beEqualTo(Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 348.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)))
-      ))
-
-      zipper.createOrUpdatePath(
-        (__ \ "key4")(3) \ "key411" \ "key4111",
-        { js => 
-          val JsNumber(nb) = js
-          JsNumber(nb + 3.0)
-        }
-      ).value must beEqualTo(Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 990.654)))
-      ))
-
-      zipper.createOrUpdatePath(
-        __,
-        { js => 
-          JsString("toto")
-        }
-      ).value must beEqualTo(JsString("toto"))
-
-      zipper.createOrUpdatePath(
-        (__ \ "key4")(5),
-        { _ => JsBoolean(true) }
-      ).value must beEqualTo(Json.obj(
-        "key1" -> Json.obj("key11" -> "value11", "key12" -> 123L, "key13" -> JsNull),
-        "key2" -> 123,
-        "key3" -> true,
-        "key4" -> Json.arr("value41", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> 987.654)), true)
-      ))
-    }
-
-    "create from scratch" in {
-      JsZipper(Json.obj())
-        .createOrUpdatePath( __ \ "key1" \ "key11", _ => JsString("toto") ).value must beEqualTo(
-          Json.obj("key1" -> Json.obj("key11" -> "toto"))
-        )
-
-      JsZipper(Json.obj())
-        .createOrUpdatePath( (__ \ "key1")(0) \ "key11", _ => JsString("toto") ).value must beEqualTo(
-          Json.obj("key1" -> Json.arr(Json.obj("key11" -> "toto")))
-        )
-
-      JsZipper(Json.obj())
-        .createOrUpdatePath( (__ \ "key1")(1) \ "key11", _ => JsNumber(123L) ).value must beEqualTo(
-          Json.obj("key1" -> Json.arr(Json.obj("key11" -> 123L)))
-        )
-
-      JsZipper(Json.arr())
-        .createOrUpdatePath( __(0) \ "key1" \ "key11", _ => JsNumber(123L) ).value must beEqualTo(
-          Json.arr(Json.obj("key1" -> Json.obj("key11" -> 123L)))
-        )
-    }
+    }  
 
     "build" in {
-      JsZipper.buildJsObject( 
-        __ \ "key1" \ "key11" -> JsString("toto"),
-        __ \ "key1" \ "key12" -> JsNumber(123L),
-        (__ \ "key2")(0)      -> JsBoolean(true),
-        __ \ "key3"           -> Json.arr(1, 2, 3)
-      ).value must beEqualTo(
+      Await.result(JsZipperM.buildJsObject[Future]( 
+        __ \ "key1" \ "key11" -> future{JsString("toto")},
+        __ \ "key1" \ "key12" -> future{JsNumber(123L)},
+        (__ \ "key2")(0)      -> future{JsBoolean(true)},
+        __ \ "key3"           -> future{Json.arr(1, 2, 3)}
+      ).map(_.value), Duration("2 seconds")) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
             "key11" -> JsString("toto"),
@@ -597,14 +507,13 @@ object JsZipperSpec extends Specification {
           "key3" -> Json.arr(1, 2, 3)
         ))
 
-      JsZipper.buildJsArray(
-         __(0) -> JsNumber(123.45),
-         __(1) -> JsString("toto")
-      ).value must beEqualTo(
+      Await.result(JsZipperM.buildJsArray[Future](
+         __(0) -> future{JsNumber(123.45)},
+         __(1) -> future{JsString("toto")}
+      ).map(_.value), Duration("2 seconds")) must beEqualTo(
         Json.arr(123.45, "toto")
       )
-    }
-    
+    }  
   }
 }
 
