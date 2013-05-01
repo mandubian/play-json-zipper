@@ -49,7 +49,7 @@ implicit class JsExtensions(val js: JsValue) extends AnyVal {
     JsZipperM[M](js).createOrUpdate(pathValues).map(_.root.value)
   }
 
-  def updateAllM[M[_]](filterF: JsValue => Boolean)(mapF: JsValue => M[JsValue])(implicit m:Monad[M]): M[JsValue] = {
+  def updateAllM[M[_]: Monad](filterF: JsValue => Boolean)(mapF: JsValue => M[JsValue]): M[JsValue] = {
     JsZipperM[M](js).filterMapThrough{ (zipper:JsZipperM[M]) => 
       filterF(zipper.value)
     }{ (zipper:JsZipperM[M]) => 
@@ -58,4 +58,24 @@ implicit class JsExtensions(val js: JsValue) extends AnyVal {
   }
 }
 
+object JsExtensions {
+  import syntax._
+  
+  def buildJsObject(pathValues: (JsPath, JsValue)*): JsValue = 
+    JsZipper.buildJsObject(pathValues).root.value
+
+  def buildJsArray(values: JsValue*): JsValue = 
+    JsZipper.buildJsArray(
+      values.zipWithIndex.map{ case (v, idx) => __(idx) -> v }
+    ).root.value
+
+  def buildJsObjectM[M[_]:Monad](pathValues: (JsPath, M[JsValue])*): M[JsValue] = 
+    JsZipperM.buildJsObject(pathValues).map(_.root.value)
+
+  def buildJsArrayM[M[_]:Monad](values: M[JsValue]*): M[JsValue] = 
+    JsZipperM.buildJsArray(
+      values.zipWithIndex.map{ case (v, idx) => __(idx) -> v }
+    ).map(_.root.value)
+
+}
 }
