@@ -18,8 +18,8 @@ import ExecutionContext.Implicits.global
 class JsExtensionsSpec extends Specification {
   val js = Json.obj(
     "key1" -> Json.obj(
-      "key11" -> "TO_FIND", 
-      "key12" -> 123L, 
+      "key11" -> "TO_FIND",
+      "key12" -> 123L,
       "key13" -> JsNull
     ),
     "key2" -> 123,
@@ -29,14 +29,14 @@ class JsExtensionsSpec extends Specification {
 
   "JsExtensions" should {
     "set" in {
-      js.set( 
+      js.set(
         (__ \ "key4")(2) -> JsNumber(765.23),
-        (__ \ "key1" \ "key12") -> JsString("toto") 
+        (__ \ "key1" \ "key12") -> JsString("toto")
       ) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND", 
-            "key12" -> "toto", 
+            "key11" -> "TO_FIND",
+            "key12" -> "toto",
             "key13" -> JsNull
           ),
           "key2" -> 123,
@@ -47,13 +47,13 @@ class JsExtensionsSpec extends Specification {
     }
 
     "delete" in {
-      js.delete( 
+      js.delete(
         (__ \ "key4")(2)
       ) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND", 
-            "key12" -> 123L, 
+            "key11" -> "TO_FIND",
+            "key12" -> 123L,
             "key13" -> JsNull
           ),
           "key2" -> 123,
@@ -64,7 +64,7 @@ class JsExtensionsSpec extends Specification {
     }
 
     "delete" in {
-      js.delete( 
+      js.delete(
         (__ \ "key4")(2),
         (__ \ "key1" \ "key12"),
         (__ \ "key1" \ "key13")
@@ -81,10 +81,10 @@ class JsExtensionsSpec extends Specification {
     }
 
     "find all" in {
-      js.findAll( _ == JsString("TO_FIND") ).toList must beEqualTo(
+      js.findAllByValue( _ == JsString("TO_FIND") ).toList must beEqualTo(
         List(
-          (__ \ 'key1 \ 'key11, JsString("TO_FIND")), 
-          ((__ \ 'key4)(0), JsString("TO_FIND")), 
+          (__ \ 'key1 \ 'key11, JsString("TO_FIND")),
+          ((__ \ 'key4)(0), JsString("TO_FIND")),
           ((__ \ 'key4)(3) \ 'key411 \ 'key4111, JsString("TO_FIND"))
         )
       )
@@ -92,14 +92,14 @@ class JsExtensionsSpec extends Specification {
     }
 
     "update all by value" in {
-      js.updateAll( (_:JsValue) == JsString("TO_FIND") ){ js =>
+      js.filterUpdateAllByValue( (_:JsValue) == JsString("TO_FIND") ){ js =>
         val JsString(str) = js
         JsString(str + "2")
       } must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND2", 
-            "key12" -> 123L, 
+            "key11" -> "TO_FIND2",
+            "key12" -> 123L,
             "key13" -> JsNull
           ),
           "key2" -> 123,
@@ -111,16 +111,16 @@ class JsExtensionsSpec extends Specification {
     }
 
     "update all by pathvalue" in {
-      js.updateAll{ (path, js) => 
-        JsPathExtension.hasKey(path) == Some("key4111") 
+      js.filterUpdateAll{ (path, js) =>
+        JsPathExtension.hasKey(path) == Some("key4111")
       }{ (path, js) =>
         val JsString(str) = js
         JsString(str + path.path.last)
       } must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND", 
-            "key12" -> 123L, 
+            "key11" -> "TO_FIND",
+            "key12" -> 123L,
             "key13" -> JsNull
           ),
           "key2" -> 123,
@@ -133,7 +133,7 @@ class JsExtensionsSpec extends Specification {
 
     "setM" in {
       Await.result(
-        js.setM[Future]( 
+        js.setM[Future](
           (__ \ "key4")(2)        -> future{ JsNumber(765.23) },
           (__ \ "key1" \ "key12") -> future{ JsString("toto") }
         ),
@@ -141,8 +141,8 @@ class JsExtensionsSpec extends Specification {
       ) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND", 
-            "key12" -> "toto", 
+            "key11" -> "TO_FIND",
+            "key12" -> "toto",
             "key13" -> JsNull
           ),
           "key2" -> 123,
@@ -154,7 +154,7 @@ class JsExtensionsSpec extends Specification {
 
     "updateM all by value" in {
       Await.result(
-        js.updateAllM[Future]( (_:JsValue) == JsString("TO_FIND") ){ js =>
+        js.filterUpdateAllByValueM[Future]( (_:JsValue) == JsString("TO_FIND") ){ js =>
           future {
             val JsString(str) = js
             JsString(str + "2")
@@ -164,8 +164,32 @@ class JsExtensionsSpec extends Specification {
       ) must beEqualTo(
         Json.obj(
           "key1" -> Json.obj(
-            "key11" -> "TO_FIND2", 
-            "key12" -> 123L, 
+            "key11" -> "TO_FIND2",
+            "key12" -> 123L,
+            "key13" -> JsNull
+          ),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr("TO_FIND2", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND2")))
+        )
+      )
+      success
+    }
+
+    "updateM all by path/value" in {
+      Await.result(
+        js.updateAllM[Future]{
+          case ( __ \ "key1" \ "key11",                   JsString(str) ) => future { JsString(str + "2"): JsValue }
+          case ( (__ \ "key4")@@0,                        JsString(str) ) => future { JsString(str + "2"): JsValue }
+          case ( (__ \ "key4")@@3 \ "key411" \ "key4111", JsString(str) ) => future { JsString(str + "2"): JsValue }
+          case (path, value) => Future.successful(value)
+        },
+        Duration("2 seconds")
+      ) must beEqualTo(
+        Json.obj(
+          "key1" -> Json.obj(
+            "key11" -> "TO_FIND2",
+            "key12" -> 123L,
             "key13" -> JsNull
           ),
           "key2" -> 123,

@@ -481,7 +481,7 @@ sealed trait JsZipperM[M[_]] extends JsZipper {
     def step(zipper: JsZipperM[M]): M[JsZipperM[M]] = {      
       zipper match {
         case _:JsZipperEmpty => monad.pure(JsZipperM.Empty[M]())
-        case found          => 
+        case found           => 
           mapFn(found) flatMap { updated =>
             updated.findNext(filterFn) match {
               case _:JsZipperEmpty  => monad.pure(updated)
