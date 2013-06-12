@@ -1,12 +1,12 @@
 /**
   * Copyright 2013 Pascal Voitot (@mandubian)
-  * 
+  *
   * Licensed under the Apache License, Version 2.0 (the "License");
   * you may not use this file except in compliance with the License.
   * You may obtain a copy of the License at
-  * 
+  *
   *     http://www.apache.org/licenses/LICENSE-2.0
-  * 
+  *
   * Unless required by applicable law or agreed to in writing, software
   * distributed under the License is distributed on an "AS IS" BASIS,
   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -65,23 +65,23 @@ trait JsZipper {
       case Nil => JsZipper.Empty
       case (key, value) :: tail =>
         JsZipper(
-          Node(key, value), 
-          Stream.empty, 
-          objTailToStream(tail), 
+          Node(key, value),
+          Stream.empty,
+          objTailToStream(tail),
           (lefts, focus, rights) #:: parents
         )
     }
-      
+
     case arr: JsArray => arr.value.toList match {
-      case Nil => JsZipper.Empty        
-      case head :: tail => 
+      case Nil => JsZipper.Empty
+      case head :: tail =>
         JsZipper(
-          Node(head), 
-          Stream.empty, 
-          arrayTailToStream(tail), 
+          Node(head),
+          Stream.empty,
+          arrayTailToStream(tail),
           (lefts, focus, rights) #:: parents)
     }
-      
+
     case v => JsZipper.Empty
   }
 
@@ -96,10 +96,10 @@ trait JsZipper {
   }
 
   def up: JsZipper = parents match {
-    case (plefts, parent, prights) #:: ancestors => 
+    case (plefts, parent, prights) #:: ancestors =>
       val js = reify(focus, lefts, rights, parent)
       JsZipper (
-        Node.copy(parent, js), 
+        Node.copy(parent, js),
         plefts, prights, ancestors
       )
     case Stream.Empty => JsZipper.Empty
@@ -149,13 +149,13 @@ trait JsZipper {
   }
 
   def path: JsPath = pathSafe.get
-  
+
   def pathSafe: Option[JsPath] = {
     def loop(node: Node, prts: Parents, lfts: Siblings, path: JsPath): Option[JsPath] = {
       prts match {
-        case (plefts, prt, _) #:: ancestors => 
+        case (plefts, prt, _) #:: ancestors =>
           localPath(JsPath(), node, prt, lfts).flatMap( p => loop(prt, ancestors, plefts, p ++ path) )
-        case Stream.Empty => 
+        case Stream.Empty =>
           localPath(JsPath(), node, Node.Empty, lefts).map( _ ++ path )
       }
     }
@@ -168,13 +168,16 @@ trait JsZipper {
   def update(js: JsValue): JsZipper = updateNode( (_:Node) => Node.copy(focus, js) )
   def update(fn: JsValue => JsValue): JsZipper = updateNode( (node:Node) => Node.copy(focus, fn(focus.value)) )
   def updatePathNode(fn: (JsPath, Node) => Node): JsZipper = updateNode( (n:Node) => fn(path, n) )
-  def updateNode(fn: Node => Node): JsZipper = (focus, fn(focus)) match {
-    case (KeyNode(_, _), KeyNode(k2, v)) => 
-      JsZipper(KeyNode(k2, v), lefts, rights, parents)
-    case (PlainNode(_), PlainNode(v)) => 
-      JsZipper(PlainNode(v), lefts, rights, parents)
-    case (_, Node.Empty) => this // unchanged
-    case _ => JsZipper.Error(path -> "Can't update node (key+value or value) to another type of node")
+  def updateNode(fn: Node => Node): JsZipper = this match {
+    case JsZipper.Empty => JsZipper.Empty
+    case _ => (focus, fn(focus)) match {
+      case (KeyNode(_, _), KeyNode(k2, v)) =>
+        JsZipper(KeyNode(k2, v), lefts, rights, parents)
+      case (PlainNode(_), PlainNode(v)) =>
+        JsZipper(PlainNode(v), lefts, rights, parents)
+      case (_, Node.Empty) => this // unchanged
+      case _ => JsZipper.Error(path -> "Can't update node (key+value or value) to another type of node")
+    }
   }
 
   def insertValueLeft(js: JsValue): JsZipper = insertLeftNode( (_: Node) => Node(js) )
@@ -184,26 +187,26 @@ trait JsZipper {
 
   def insertLeftNode(fn: Node => Node): JsZipper = parent match {
     case Node(parent) => parent match {
-      case obj: JsObject => 
+      case obj: JsObject =>
         fn(focus) match {
-          case KeyNode(key, value) => 
+          case KeyNode(key, value) =>
             JsZipper(
               focus,
-              Node(key, value) #:: lefts, 
-              rights, 
+              Node(key, value) #:: lefts,
+              rights,
               parents
             )
           case Node.Empty => this // unchanged
           case _ => JsZipper.Error(path -> "can't add a value to JsObject, expects KeyNode(String, JsValue)")
         }
-              
-      case arr: JsArray  => 
+
+      case arr: JsArray  =>
         fn(focus) match {
-          case PlainNode(v) => 
+          case PlainNode(v) =>
             JsZipper(
-              focus, 
-              Node(v) #:: lefts, 
-              rights, 
+              focus,
+              Node(v) #:: lefts,
+              rights,
               parents
             )
           case Node.Empty => this // unchanged
@@ -221,8 +224,8 @@ trait JsZipper {
 
   // By default inserting a key/value to JsObject is done on the right
   def insertKeyValue(kv: (String, JsValue)): JsZipper = insertRightNode( (_: Node) => Node(kv._1, kv._2) )
-  def insertKeyValue(fn: (String, JsValue) => (String, JsValue)): JsZipper = 
-    insertRightNode{ (n: Node) => 
+  def insertKeyValue(fn: (String, JsValue) => (String, JsValue)): JsZipper =
+    insertRightNode{ (n: Node) =>
       n match {
         case KeyNode(key, value) => val (k, v) = fn(key, value)
                                     Node(k, v)
@@ -235,26 +238,26 @@ trait JsZipper {
 
   def insertRightNode(fn: Node => Node): JsZipper = parent match {
     case Node(parent) => parent match {
-      case obj: JsObject => 
+      case obj: JsObject =>
         fn(focus) match {
-          case KeyNode(key, value) => 
+          case KeyNode(key, value) =>
             JsZipper(
               focus,
-              lefts, 
-              Node(key, value) #:: rights, 
+              lefts,
+              Node(key, value) #:: rights,
               parents
             )
           case Node.Empty => this // unchanged
           case _ => JsZipper.Error(path -> "can't add a value to JsObject, expects KeyNode(String, JsValue)")
         }
-              
-      case arr: JsArray  => 
+
+      case arr: JsArray  =>
         fn(focus) match {
           case PlainNode(value) =>
             JsZipper(
-              focus, 
-              lefts, 
-              Node(value) #:: rights, 
+              focus,
+              lefts,
+              Node(value) #:: rights,
               parents
             )
           case Node.Empty => this // unchanged
@@ -270,7 +273,7 @@ trait JsZipper {
   def insertDown(node: Node): JsZipper = value match {
     case obj: JsObject =>
       if(obj.fields.isEmpty) node match {
-        case KeyNode(key, value) => 
+        case KeyNode(key, value) =>
           JsZipper(
             node,
             Stream.Empty,
@@ -283,7 +286,7 @@ trait JsZipper {
 
     case arr: JsArray =>
       if(arr.value.isEmpty) node match {
-        case PlainNode(value) => 
+        case PlainNode(value) =>
           JsZipper(
             node,
             Stream.Empty,
@@ -300,32 +303,32 @@ trait JsZipper {
   def delete: JsZipper = rights match {
     case r #:: righters => parent match {
       case Node(parent) => parent match {
-        case arr: JsArray => 
+        case arr: JsArray =>
           JsZipper(
-            r, 
-            lefts, 
-            righters, 
+            r,
+            lefts,
+            righters,
             parents
           )
-        case _ => 
+        case _ =>
           JsZipper(r, lefts, righters, parents)
       }
 
       case Node.Empty => sys.error("Can't have multiple JsValues on root")
     }
-            
+
     case Stream.Empty  => lefts match {
       case l #:: lefters => JsZipper(l, lefters, Stream.empty, parents)
       case Stream.Empty  => parents match {
-        case (plefts, parent, prights) #:: ancestors => 
+        case (plefts, parent, prights) #:: ancestors =>
           val pnode = parent match {
             case KeyNode(key, _) => Node(key, Json.obj())
             case PlainNode(_)    => Node(Json.arr())
             case _               => sys.error("A simple value can't have children")
-          } 
+          }
 
           JsZipper(pnode, plefts, prights, ancestors)
-        
+
         case Stream.Empty => JsZipper.Empty
       }
     }
@@ -337,38 +340,38 @@ trait JsZipper {
   }
 
   /* Horizontal streams */
-  def streamLeft: Stream[JsZipper]  = 
+  def streamLeft: Stream[JsZipper]  =
     this.left match {
       case JsZipper.Empty => Stream.Empty
       case zip => zip #:: zip.streamLeft
     }
 
-  def streamRight: Stream[JsZipper] = 
+  def streamRight: Stream[JsZipper] =
     this.right match {
       case JsZipper.Empty => Stream.Empty
       case zip => zip #:: zip.streamRight
     }
 
   /* Vertical streams */
-  def streamDown: Stream[JsZipper]  = 
+  def streamDown: Stream[JsZipper]  =
     this.down match {
       case JsZipper.Empty => Stream.Empty
       case zip => zip #:: zip.streamDown
     }
 
-  def streamUp: Stream[JsZipper]  = 
+  def streamUp: Stream[JsZipper]  =
     this.up match {
       case JsZipper.Empty => Stream.Empty
       case zip => zip #:: zip.streamUp
     }
-    
+
   /* In depth streams */
   def streamDeepRightFocusUp: Stream[JsZipper] = {
     this.right match {
-      case JsZipper.Empty => 
+      case JsZipper.Empty =>
         this.up match {
           case JsZipper.Empty => Stream(this)
-          case lup            => this #:: lup.streamDeepRightFocusUp 
+          case lup            => this #:: lup.streamDeepRightFocusUp
         }
       case rgt => this #:: rgt.streamDeepLeftFocusRightUp
     }
@@ -386,35 +389,35 @@ trait JsZipper {
     else bottomLeft.streamDeepRightFocusUp(filter)(map)
   }
 
-  def streamDeepRightFocusUp(filter: JsZipper => Boolean)(map: JsZipper => JsZipper): Stream[JsZipper] = {    
+  def streamDeepRightFocusUp(filter: JsZipper => Boolean)(map: JsZipper => JsZipper): Stream[JsZipper] = {
     if(filter(this)) {
       val z = map(this)
       z.right match {
-        case JsZipper.Empty => 
+        case JsZipper.Empty =>
           z.up match {
             case JsZipper.Empty => Stream(z)
-            case lup            => z #:: lup.streamDeepRightFocusUp(filter)(map) 
+            case lup            => z #:: lup.streamDeepRightFocusUp(filter)(map)
           }
         case rgt => z #:: rgt.streamDeepLeftFocusRightUp(filter)(map)
       }
     }
     else {
       this.right match {
-        case JsZipper.Empty => 
+        case JsZipper.Empty =>
           this.up match {
             case JsZipper.Empty => Stream.Empty
-            case lup            => lup.streamDeepRightFocusUp(filter)(map) 
+            case lup            => lup.streamDeepRightFocusUp(filter)(map)
           }
         case rgt => rgt.streamDeepLeftFocusRightUp(filter)(map)
       }
     }
   }
-  
+
   /* In width streams */
   def streamWideFocusRightDown: Stream[JsZipper] = {
     this match {
       case JsZipper.Empty => Stream.Empty
-      case zip            => 
+      case zip            =>
         val str = zip #:: zip.streamRight
         // perf ++ ???
         str ++ str.flatMap( _.down.streamWideFocusRightDown )
@@ -422,53 +425,53 @@ trait JsZipper {
   }
   def streamWideFRD: Stream[JsZipper] = streamWideFocusRightDown
 
-  def find(fn: JsZipper => Boolean): JsZipper = 
-    streamDeepLFRU.collectFirst{ 
+  def find(fn: JsZipper => Boolean): JsZipper =
+    streamDeepLFRU.collectFirst{
       case zipper if zipper.isPlain && fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
-  def findNext(fn: JsZipper => Boolean): JsZipper = 
+  def findNext(fn: JsZipper => Boolean): JsZipper =
     // skips this in the stream
-    streamDeepRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{
       case zipper if zipper.isPlain && fn(zipper) => zipper
     } getOrElse JsZipper.Empty
 
   def findByValue(fn: JsValue => Boolean): JsZipper = findByNode( node => fn(node.value) )
   def findNextByValue(fn: JsValue => Boolean): JsZipper = findNextByNode( node => fn(node.value) )
 
-  def findByNode(fn: Node => Boolean): JsZipper = 
-    streamDeepLFRU.collectFirst{ 
+  def findByNode(fn: Node => Boolean): JsZipper =
+    streamDeepLFRU.collectFirst{
       case zipper if zipper.isPlain && fn(zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findNextByNode(fn: Node => Boolean): JsZipper = 
+  def findNextByNode(fn: Node => Boolean): JsZipper =
     // skips this in the stream
-    streamDeepRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{
       case zipper if zipper.isPlain && fn(zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findByPathNode(fn: (JsPath, Node) => Boolean): JsZipper = 
-    streamDeepLFRU.collectFirst{ 
+  def findByPathNode(fn: (JsPath, Node) => Boolean): JsZipper =
+    streamDeepLFRU.collectFirst{
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findNextByPathNode(fn: (JsPath, Node) => Boolean): JsZipper = 
+  def findNextByPathNode(fn: (JsPath, Node) => Boolean): JsZipper =
     // skips this in the stream
-    streamDeepRFU.tail.collectFirst{ 
+    streamDeepRFU.tail.collectFirst{
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus) => zipper
     } getOrElse JsZipper.Empty
 
-  def findAll(fn: JsZipper => Boolean): Stream[JsZipper] = 
+  def findAll(fn: JsZipper => Boolean): Stream[JsZipper] =
     streamDeepLFRU.collect{
       case zipper if zipper.isPlain && fn(zipper) => zipper
     }
 
-  def findAllByValue(fn: JsValue => Boolean): Stream[JsZipper] = 
+  def findAllByValue(fn: JsValue => Boolean): Stream[JsZipper] =
     streamDeepLFRU.collect{
       case zipper if zipper.isPlain && fn(zipper.focus.value) => zipper
     }
 
-  def findAllByPathValue(fn: (JsPath, JsValue) => Boolean): Stream[JsZipper] = 
+  def findAllByPathValue(fn: (JsPath, JsValue) => Boolean): Stream[JsZipper] =
     streamDeepLFRU.collect{
       case zipper if zipper.isPlain && fn(zipper.path, zipper.focus.value) => zipper
     }
@@ -478,7 +481,7 @@ trait JsZipper {
     def step(currentPath: List[PathNode], currentZipper: JsZipper): JsZipper = currentPath match {
       case Nil       => currentZipper.up
       case List(p)   => p match {
-        case KeyPathNode(pkey) => 
+        case KeyPathNode(pkey) =>
           (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
             case KeyNode(key, _) if(key == pkey) => zipper
           } } match {
@@ -492,9 +495,9 @@ trait JsZipper {
           }
         case _ => JsZipper.Empty // TODO (recursive path???)
       }
-      case p :: tail => 
+      case p :: tail =>
         p match {
-          case KeyPathNode(pkey) => 
+          case KeyPathNode(pkey) =>
             (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
               case KeyNode(key, _) if(key == pkey) => zipper
             } } match {
@@ -520,11 +523,11 @@ trait JsZipper {
     def step(currentPath: List[PathNode], currentZipper: JsZipper, parentZipper: JsZipper): JsZipper = currentPath match {
       case Nil       => currentZipper.up.update(f)
       case List(p)   => p match {
-        case KeyPathNode(pkey) => 
+        case KeyPathNode(pkey) =>
           currentZipper match {
             case JsZipper.Empty => // inserting in empty object
               parentZipper.insertDown(KeyNode(pkey, f(Json.obj())))
-            case _ => 
+            case _ =>
               (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
                 case KeyNode(key, _) if(key == pkey) => zipper
               } } match {
@@ -533,13 +536,13 @@ trait JsZipper {
                   else JsZipper.Empty
                 case Some(zipper) => zipper.update(f(zipper.value))
               }
-          }          
+          }
 
         case IdxPathNode(idx) =>
           currentZipper match {
             case JsZipper.Empty => // inserting in empty object
               parentZipper.insertDown(PlainNode(f(Json.arr())))
-            case _ => 
+            case _ =>
               (currentZipper #:: currentZipper.streamRight).drop(idx) match {
                 case Stream.Empty | JsZipper.Empty #:: _ => // not found
                   if(currentZipper.parent.isArray) currentZipper.last.insertValueRight(f(Json.arr()))
@@ -549,9 +552,9 @@ trait JsZipper {
           }
         case _ => JsZipper.Empty // TODO (recursive path???)
       }
-      case p :: next :: tail => 
+      case p :: next :: tail =>
         p match {
-          case KeyPathNode(pkey) => 
+          case KeyPathNode(pkey) =>
             (currentZipper #:: currentZipper.streamRight).collectFirst{ zipper => zipper.focus match {
               case KeyNode(key, _) if(key == pkey) => zipper
             } } match {
@@ -599,7 +602,7 @@ trait JsZipper {
     }
     step(path.path, this.down, this).root
   }
-    
+
   def createOrUpdatePath(path: JsPath, js: JsValue): JsZipper = createOrUpdatePath(path, _ => js)
 
   def createOrUpdate(pathValues: Seq[(JsPath, JsValue)]): JsZipper = {
@@ -611,9 +614,9 @@ trait JsZipper {
         case head :: tail => step(tail, zipper.createOrUpdatePath(head._1, head._2))
       }
     }
-    
+
     step(pathValues.toList, this)
-  }  
+  }
 
   def createOrUpdate(pathValue: (JsPath, JsValue), pathValues: (JsPath, JsValue)*): JsZipper =
     createOrUpdate(Seq(pathValue) ++ pathValues)
@@ -621,7 +624,7 @@ trait JsZipper {
 
   def deletePaths(paths: Seq[JsPath]): JsZipper = {
     @tailrec
-    def step(zipper: JsZipper, currPaths: List[JsPath]): JsZipper = {  
+    def step(zipper: JsZipper, currPaths: List[JsPath]): JsZipper = {
       currPaths match {
         case Nil           => zipper
         case List(p)       => zipper.findPath(p) match {
@@ -658,17 +661,17 @@ trait JsZipper {
 
   def filterMapThrough(filterFn: JsZipper => Boolean)(mapFn: JsZipper => JsZipper): JsZipper = {
     @tailrec
-    def step(zipper: JsZipper): JsZipper = {      
+    def step(zipper: JsZipper): JsZipper = {
       zipper match {
         case JsZipper.Empty => JsZipper.Empty
-        case found          => 
+        case found          =>
           val updated = mapFn(found)
 
           updated.findNext(filterFn) match {
             case JsZipper.Empty  => updated
             case found           => step(found)
           }
-      } 
+      }
     }
 
     step(find(filterFn))
@@ -676,17 +679,17 @@ trait JsZipper {
 
   def filterDeleteThrough(filterFn: JsZipper => Boolean): JsZipper = {
     @tailrec
-    def step(zipper: JsZipper): JsZipper = {      
+    def step(zipper: JsZipper): JsZipper = {
       zipper match {
         case JsZipper.Empty => JsZipper.Empty
-        case found          => 
+        case found          =>
           val next = found.delete
           if(filterFn(next)) step(next)
           else next.findNext(filterFn) match {
             case JsZipper.Empty  => next
             case found           => step(found)
           }
-      } 
+      }
     }
 
     step(find(filterFn))
@@ -712,18 +715,18 @@ trait JsZipperEmpty extends JsZipper {
   val rights: JsZipper.Siblings = Stream.Empty
   val parents: JsZipper.Parents = Stream.Empty
 
-  override def toString = 
+  override def toString =
     s"""JsZipper.Empty(focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
 }
 
-trait JsZipperError extends JsZipper { 
+trait JsZipperError extends JsZipper {
   val error: (JsPath, String)
   override val focus: Node = Node.Error(error)
   override val lefts: JsZipper.Siblings = Stream.Empty
   override val rights: JsZipper.Siblings = Stream.Empty
   override val parents: JsZipper.Parents = Stream.Empty
 
-  override def toString = 
+  override def toString =
     s"""JsZipper.Error(error: $error, focus=$focus, lefts=$lefts, rights=$rights, parents=$parents)"""
 }
 
@@ -732,7 +735,7 @@ object JsZipper extends JsZipperOps {
   type Parent   = (Siblings, Node, Siblings)
   type Parents  = Stream[Parent]
 
-  def apply(js: JsValue) = 
+  def apply(js: JsValue) =
     new JsZipper {
       val focus   = Node(js)
       val lefts   = Stream.empty
@@ -750,29 +753,29 @@ object JsZipper extends JsZipperOps {
       val rights  = theRights
       val parents = theParents
     }
-  
-  def unapply(zipper: JsZipper): Option[(Node, Siblings, Siblings, Parents)] = 
+
+  def unapply(zipper: JsZipper): Option[(Node, Siblings, Siblings, Parents)] =
     Some((zipper.focus, zipper.lefts, zipper.rights, zipper.parents))
 
-  def mergeSiblingsAsObjLeft(siblings: Siblings): JsObject = 
+  def mergeSiblingsAsObjLeft(siblings: Siblings): JsObject =
     JsObject(siblings.foldLeft(Seq[(String, JsValue)]()){ (seq, n) => n match {
       case KeyNode(key, value) => (key -> value) +: seq
       case _                   => seq
     }})
 
-  def mergeSiblingsAsObj(siblings: Siblings): JsObject = 
+  def mergeSiblingsAsObj(siblings: Siblings): JsObject =
     JsObject(siblings.reverse.foldLeft(Seq[(String, JsValue)]()){ (seq, n) => n match {
       case KeyNode(key, value) => (key -> value) +: seq
       case _                   => seq
     }})
 
-  def mergeSiblingsAsArrLeft(siblings: Siblings): JsArray = 
+  def mergeSiblingsAsArrLeft(siblings: Siblings): JsArray =
     siblings.foldLeft(Json.arr()){ (arr, n) => n match {
       case PlainNode(value) => value +: arr
       case _                => arr
     }}
 
-  def mergeSiblingsAsArrRight(siblings: Siblings): JsArray = 
+  def mergeSiblingsAsArrRight(siblings: Siblings): JsArray =
     siblings.foldLeft(Json.arr()){ (arr, n) => n match {
       case PlainNode(value) => arr :+ value
       case _                => arr
@@ -780,13 +783,13 @@ object JsZipper extends JsZipperOps {
 
   def reify(node: Node, lefts: Siblings, rights: Siblings, parent: Node): JsValue =
     (parent.value, node) match {
-      case (JsObject(_), KeyNode(key, value)) =>         
-        mergeSiblingsAsObjLeft(lefts) +   
+      case (JsObject(_), KeyNode(key, value)) =>
+        mergeSiblingsAsObjLeft(lefts) +
         (key -> value) ++
         mergeSiblingsAsObj(rights)
 
-      case (JsArray(_), PlainNode(value)) =>        
-        (mergeSiblingsAsArrLeft(lefts) :+   
+      case (JsArray(_), PlainNode(value)) =>
+        (mergeSiblingsAsArrLeft(lefts) :+
         value) ++
         mergeSiblingsAsArrRight(rights)
 
@@ -815,11 +818,11 @@ object JsZipper extends JsZipperOps {
       case KeyNode(key, _) => Some(currentPath \ key)
       case PlainNode(_)    => parent match {
               case Node.Empty  => Some(currentPath)
-              case _           => parent.value match { 
+              case _           => parent.value match {
                     case JsArray(_) => Some(currentPath(lefts.length))
                     case _          => sys.error("impossible case")
                   }
-            }  
+            }
       case Node.Empty      => None
       case Node.Error(_)   => None
     }

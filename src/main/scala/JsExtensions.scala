@@ -37,6 +37,13 @@ implicit class JsExtensions(val js: JsValue) extends AnyVal {
       .deletePaths(paths).value
   }
 
+  def update(path: JsPath, f: JsValue => JsValue): JsValue = {
+    JsZipper(js).findPath(path) match {
+      case JsZipper.Empty => js
+      case zip => zip.update(f).root.value
+    }
+  }
+
   def findAllByValue(f: JsValue => Boolean): Stream[(JsPath, JsValue)] = {
     JsZipper(js).findAllByValue(f) map { zipper => zipper.pathValue }
   }
@@ -45,13 +52,21 @@ implicit class JsExtensions(val js: JsValue) extends AnyVal {
     JsZipper(js).findAllByPathValue(f) map { zipper => zipper.pathValue }
   }
 
-  def updateAllByValue(mapF: JsValue => JsValue): JsValue = {
-    JsZipper(js).filterMapThroughByValue(_ => true)(mapF).root.value
+  def updateAllByValue(mapF: PartialFunction[JsValue, JsValue]): JsValue = {
+    JsZipper(js).filterMapThroughByValue{ mapF.isDefinedAt(_) }(mapF).root.value
   }
 
-  def updateAll(mapF: (JsPath, JsValue) => JsValue): JsValue = {
-    JsZipper(js).filterMapThrough{ _ => true }{ zipper =>
+  def updateAll(mapF: PartialFunction[(JsPath, JsValue), JsValue]): JsValue = {
+    JsZipper(js).filterMapThrough{ zipper => mapF.isDefinedAt(zipper.path, zipper.value) }{ zipper =>
       zipper.updatePathNode( (path, node) => Node.copy(node, mapF(path, node.value)) )
+    }.root.value
+  }
+
+  def updateAllKeyNodes(mapF: PartialFunction[(JsPath, JsValue), (String, JsValue)]): JsValue = {
+    JsZipper(js).filterMapThrough{ zipper => mapF.isDefinedAt(zipper.path, zipper.value) }{ zipper =>
+      zipper.updatePathNode{ (path, node) =>
+        Node.copyKeyNode(node, mapF(path, node.value))
+      }
     }.root.value
   }
 

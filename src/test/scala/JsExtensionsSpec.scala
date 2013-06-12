@@ -199,6 +199,65 @@ class JsExtensionsSpec extends Specification {
       )
       success
     }
+
+    "update one path" in {
+      js.update(
+        (__ \ "key4")(3) \ "key411",
+        { js => val JsString(str) = js \ "key4111"; JsString(str+"123") }
+      ) must beEqualTo(
+        Json.obj(
+          "key1" -> Json.obj(
+            "key11" -> "TO_FIND",
+            "key12" -> 123L,
+            "key13" -> JsNull
+          ),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> "TO_FIND123"))
+        )
+      )
+    }
+
+
+    "update path not found" in {
+      js.update(
+        (__ \ "key5"),
+        { js => val JsString(str) = js \ "key4111"; JsString(str+"123") }
+      ) must beEqualTo(js)
+    }
+
+    "update all keynodes" in {
+      val obj = Json.obj(
+        "_id" -> Json.obj("$oid" -> "1234"),
+        "key1" -> Json.obj(
+          "_id" -> Json.obj("$oid" -> "9876")
+        ),
+        "key2" -> Json.arr(
+          "alpha",
+          123,
+          Json.obj(
+            "_id" -> Json.obj("$oid" -> "4567")
+          )
+        )
+      )
+      obj.updateAllKeyNodes{
+        case ((_ \ "_id"), value) => ("id" -> value \ "$oid")
+      } must beEqualTo(
+        Json.obj(
+          "id" -> "1234",
+          "key1" -> Json.obj(
+            "id" -> "9876"
+          ),
+          "key2" -> Json.arr(
+            "alpha",
+            123,
+            Json.obj(
+              "id" -> "4567"
+            )
+          )
+        )
+      )
+    }
   }
 
 }

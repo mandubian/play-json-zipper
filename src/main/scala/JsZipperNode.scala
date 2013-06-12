@@ -74,6 +74,11 @@ object Node {
     case PlainNode(_)     => PlainNode(newValue)
     case Error(e)             => Error(e)
   }
+
+  def copyKeyNode(node: Node, newKeyValue: (String, JsValue)) = node match {
+    case KeyNode(_, _)    => KeyNode(newKeyValue._1, newKeyValue._2)
+    case _                => node
+  }
 }
 
 case class KeyNode(val key: String, override val value: JsValue) extends Node
