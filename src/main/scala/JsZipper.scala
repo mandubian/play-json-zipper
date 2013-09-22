@@ -413,6 +413,8 @@ trait JsZipper {
     }
   }
 
+  def streamDeepLeaves = streamDeepLeftFocusRightUp.filter(_.isLeaf)
+
   /* In width streams */
   def streamWideFocusRightDown: Stream[JsZipper] = {
     this match {
@@ -674,7 +676,10 @@ trait JsZipper {
       }
     }
 
-    step(find(filterFn))
+    find(filterFn) match {
+      case JsZipper.Empty => this
+      case zipper => step(zipper)
+    }
   }
 
   def filterDeleteThrough(filterFn: JsZipper => Boolean): JsZipper = {

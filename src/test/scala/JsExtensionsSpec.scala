@@ -258,6 +258,115 @@ class JsExtensionsSpec extends Specification {
         )
       )
     }
+
+    "use json interpolation" in {
+      val alpha = "foo"
+      val beta = 123L
+      val gamma = Json.arr(1, 2, 3)
+      val delta = Json.obj("key1" -> "value1", "key2" -> "value2")
+      val js = json"""
+        {
+          "alpha" : "$alpha",
+          "beta" : $beta,
+          "gamma" : $gamma,
+          "delta" : $delta,
+          "eta" : {
+            "foo" : "bar",
+            "foo2" : [ "bar21", 123, true, null ]
+          }
+        }
+      """
+      js must beEqualTo(
+        Json.obj(
+          "alpha" -> "foo",
+          "beta" -> 123L,
+          "gamma" -> Json.arr(1, 2, 3),
+          "delta" -> Json.obj("key1" -> "value1", "key2" -> "value2"),
+          "eta" -> Json.obj("foo" -> "bar", "foo2" -> Json.arr("bar21", 123L, true, JsNull))
+        )
+      )
+    }
+
+    val js2 = Json.obj(
+        "key1" -> "value1",
+        "key2" -> Json.arr(
+          "alpha",
+          Json.obj("foo" -> "bar", "foo2" -> Json.obj("key21" -> "value21", "key22" -> Json.arr("value221", 123L, false))),
+          true,
+          123.45
+        )
+      )
+
+    "use json pattern matching 1" in {
+      js2 match {
+        case json"""{ "key1" : $v1, "key2" : ["alpha", $v2, true, $v3] }""" =>
+          v1 must beEqualTo(JsString("value1"))
+          v2 must beEqualTo(Json.obj("foo" -> "bar", "foo2" -> Json.obj("key21" -> "value21", "key22" -> Json.arr("value221", 123L, false))))
+          v3 must beEqualTo(JsNumber(123.45))
+          success
+        case _ => failure
+      }
+    }
+
+    "use json pattern matching 2" in {
+      js2 match {
+        case json"""{ "key1" : "value1", "key2" : ["alpha", { "foo" : "bar", "foo2" : { "key21" : $v1, "key22" : $v2 } }, true, 123.45] }""" =>
+          v1 must beEqualTo(JsString("value21"))
+          v2 must beEqualTo(Json.arr("value221", 123L, false))
+          success
+        case _ => failure
+      }
+    }
+
+    "use json pattern matching 3" in {
+      js2 match {
+        case json"""{
+          "key1" : "value2",
+          "key2" : ["alpha", $v2, true, $v3]
+        }"""   => failure
+        case _ => success
+      }
+    }
+
+    "use json pattern matching 4" in {
+      Json.arr(1, 2, 3, 4) match {
+        case json"[ $v1, 2, $v2, 4]" => 
+          v1 must beEqualTo(JsNumber(1))
+          v2 must beEqualTo(JsNumber(3))
+          success
+        case _ => failure
+      }
+    }
+
+    "use json pattern matching 4bis" in {
+      Json.arr(1, 2, 3, JsNull) match {
+        case json"[ 1, 2, 3, $v1]" => 
+          v1 must beEqualTo(JsNull)
+          success
+        case _ => failure
+      }
+    }
+
+    "use json pattern matching 5" in {
+      val json"[ $v1, 2, $v2, 4 ]" = Json.arr(1, 2, 3, 4)
+      v1 must beEqualTo(JsNumber(1))
+      v2 must beEqualTo(JsNumber(3))
+
+
+      val json"""{ "key1" : $v3, "key2" : "value2", "key3" : $v4}""" = 
+          json"""{ "key1" : 123.23, "key2" : "value2", "key3" : "value3"}"""
+      v3 must beEqualTo(JsNumber(123.23))
+      v4 must beEqualTo(JsString("value3"))
+
+      case class FooBar(key1: String, key2: Long)
+      json"""{ "key1" : 123, "key2" : "value2", "key3" : "value3"}""" match {
+        case json"""{ "key1" : $v1, "key2" : "value2", "key3" : $v2 }""" => 
+          FooBar(v2.as[String], v1.as[Long])
+          success
+        case _ => failure
+      }
+    }
+
   }
 
 }
