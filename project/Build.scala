@@ -7,6 +7,7 @@ object ApplicationBuild extends Build {
   val buildVersion      = "1.0"
 
   val mandubianRepo = Seq(
+    "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
     "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
   )
