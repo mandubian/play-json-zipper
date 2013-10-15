@@ -32,41 +32,37 @@ object Application extends Controller with MongoController {
       .withQueryString( "user_id" -> (value \ "user_id").as[String] )
       .get().map{ resp => resp.json }
 
-  def dataSeq = Action{
-    Async{
-      for{
-        templates <- coll.find(Json.obj()).cursor[JsObject].toList
-        updated   <- Json.toJson(templates).updateAllM{
-          case (_ \ "twitter", value) => callWSFromTemplate(value)
-          case (_ \ "github", value)  => callWSFromTemplate(value)
-          case (_, value)             => Future.successful(value)
-        }
-      } yield Ok(updated)
-    }
-  }
-
-  def dataPar = Action{
-    Async{
-      coll.find(Json.obj()).cursor[JsObject].toList.flatMap{ templates =>
-        // converts List[JsObject] into JsArray
-        val jsonTemplates = Json.toJson(templates)
-
-        // gathers all nodes that need to be updated
-        val nodes = jsonTemplates.findAllM[Future]{
-          case (_ \ "twitter", _) | (_ \ "github", _) => true
-          case (_, value) => false
-        }
-
-        // launches WS calls in parallel and updates original JsArray
-        Future.traverse(nodes){
-          case (path@(_ \ "twitter"), value) => callWSFromTemplate(value).map( path -> _ )
-          case (path@(_ \ "github"), value)  => callWSFromTemplate(value).map( path -> _ )
-        }.map{ pathvalues => Ok(jsonTemplates.set(pathvalues:_*)) }
+  def dataSeq = Action.async {
+    for{
+      templates <- coll.find(Json.obj()).cursor[JsObject].collect[List]()
+      updated   <- Json.toJson(templates).updateAllM{
+        case (_ \ "twitter", value) => callWSFromTemplate(value)
+        case (_ \ "github", value)  => callWSFromTemplate(value)
+        case (_, value)             => Future.successful(value)
       }
+    } yield Ok(updated)
+  }
+
+  def dataPar = Action.async {
+    coll.find(Json.obj()).cursor[JsObject].collect[List]().flatMap{ templates =>
+      // converts List[JsObject] into JsArray
+      val jsonTemplates = Json.toJson(templates)
+
+      // gathers all nodes that need to be updated
+      val nodes = jsonTemplates.findAllM[Future]{
+        case (_ \ "twitter", _) | (_ \ "github", _) => true
+        case (_, value) => false
+      }
+
+      // launches WS calls in parallel and updates original JsArray
+      Future.traverse(nodes){
+        case (path@(_ \ "twitter"), value) => callWSFromTemplate(value).map( path -> _ )
+        case (path@(_ \ "github"), value)  => callWSFromTemplate(value).map( path -> _ )
+      }.map{ pathvalues => Ok(jsonTemplates.set(pathvalues:_*)) }
     }
   }
 
-  def provision = Action { Async {
+  def provision = Action.async {
     val values = Enumerator(
       Json.obj(
         "streams" -> Json.obj(
@@ -112,7 +108,7 @@ object Application extends Controller with MongoController {
       Ok(Json.obj("nb"->nb))
     }
 
-  } }
+  }
 
 
 }
