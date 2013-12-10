@@ -14,6 +14,7 @@
   * limitations under the License.
   */
 package play.api.libs.json
+package monad
 
 import scala.util.{Try, Success, Failure}
 import scala.annotation.tailrec
