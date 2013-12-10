@@ -264,6 +264,29 @@ object JsZipperSpec extends Specification {
       zipper.delete must beEqualTo(JsZipper.Empty)
       zipper.down.delete.root.value must beEqualTo(Json.arr(123L, false))
       zipper.down.delete.delete.root.value must beEqualTo(Json.arr(false))
+
+      val arr1 = Json.arr("single")
+      val arr3 = Json.arr("item1", "item2", "item3")
+      JsZipper(arr1).down.delete.root.value must beEqualTo(Json.arr())
+      JsZipper(arr3).down.right.delete.root.value must beEqualTo(Json.arr("item1", "item3"))
+      JsZipper(arr3).down.right.right.delete.root.value must beEqualTo(Json.arr("item1", "item2"))
+
+      val obj1 = Json.obj("single" -> "value")
+      val obj3 = Json.obj("key1" -> "value1", "key2" -> "value2", "key3" -> "value3")
+      JsZipper(obj1).down.delete.root.value must beEqualTo(Json.obj())
+      JsZipper(obj3).down.delete.root.value must beEqualTo(Json.obj("key2" -> "value2", "key3" -> "value3"))
+      JsZipper(obj3).down.right.delete.root.value must beEqualTo(Json.obj("key1" -> "value1", "key3" -> "value3"))
+      JsZipper(obj3).down.right.right.delete.root.value must beEqualTo(Json.obj("key1" -> "value1", "key2" -> "value2"))
+
+      val arr1InObj = Json.obj("key1" -> arr1)
+      val arr1InArr = Json.arr(arr1)
+      JsZipper(arr1InObj).down.down.delete.root.value must beEqualTo(Json.obj("key1" -> Json.arr()))
+      JsZipper(arr1InArr).down.down.delete.root.value must beEqualTo(Json.arr(Json.arr()))
+
+      val obj1InObj = Json.obj("key1" -> obj1)
+      val obj1InArr = Json.arr(obj1)
+      JsZipper(obj1InObj).down.down.delete.root.value must beEqualTo(Json.obj("key1" -> Json.obj()))
+      JsZipper(obj1InArr).down.down.delete.root.value must beEqualTo(Json.arr(Json.obj()))
     }
 
     "find by value" in {
