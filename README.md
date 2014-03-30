@@ -14,7 +14,22 @@
 
 _Please note, `JsZipper` is not an end in itself but a tool useful to provide new API to manipulate Json._
 
-Let's go to samples. 
+## Use it in your SBT project
+
+> I've just published v1.1 of JsZipper to Bintray instead of my fake maven repo in github.
+> It's much more reliable.
+
+```scala
+resolvers += "mandubian maven bintray" at "http://dl.bintray.com/mandubian/maven"
+
+libraryDependencies ++= Seq(
+  "com.mandubian"     %% "play-json-zipper"    % "1.1"
+)
+```
+
+## Samples
+
+Let's go to samples.
 
 We'll use following Json Object.
 
