@@ -81,6 +81,39 @@ class JsExtensionsSpec extends Specification {
       )
     }
 
+    "delete last element in array" in {
+      js.delete(
+        (__ \ "key4")(3),
+        (__ \ "key4")(2),
+        (__ \ "key4")(1),
+        (__ \ "key4")(0)
+      ) must beEqualTo(
+        Json.obj(
+          "key1" -> Json.obj(
+            "key11" -> "TO_FIND",
+            "key12" -> 123L,
+            "key13" -> JsNull
+          ),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr())
+      )
+    }
+
+    "delete last element in object" in {
+      js.delete(
+        (__ \ "key1" \ "key11"),
+        (__ \ "key1" \ "key12"),
+        (__ \ "key1" \ "key13")
+      ) must beEqualTo(
+        Json.obj(
+          "key1" -> Json.obj(),
+          "key2" -> 123,
+          "key3" -> true,
+          "key4" -> Json.arr("TO_FIND", 345.6, "test", Json.obj("key411" -> Json.obj("key4111" -> "TO_FIND"))))
+      )
+    }
+
     "find all" in {
       js.findAllByValue( _ == JsString("TO_FIND") ).toList must beEqualTo(
         List(

@@ -321,9 +321,14 @@ trait JsZipper {
       case l #:: lefters => JsZipper(l, lefters, Stream.empty, parents)
       case Stream.Empty  => parents match {
         case (plefts, parent, prights) #:: ancestors =>
+          def emptyValue(value: JsValue) = value match {
+            case JsArray(_)  => Json.arr()
+            case JsObject(_) => Json.obj()
+            case _           => sys.error("A simple value can't have children")
+          }
           val pnode = parent match {
-            case KeyNode(key, _) => Node(key, Json.obj())
-            case PlainNode(_)    => Node(Json.arr())
+            case KeyNode(key, v) => Node(key, emptyValue(v))
+            case PlainNode(v)    => Node(emptyValue(v))
             case _               => sys.error("A simple value can't have children")
           }
 
