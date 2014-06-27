@@ -23,7 +23,7 @@ _Please note, `JsZipper` is not an end in itself but a tool useful to provide ne
 resolvers += "mandubian maven bintray" at "http://dl.bintray.com/mandubian/maven"
 
 libraryDependencies ++= Seq(
-  "com.mandubian"     %% "play-json-zipper"    % "1.1"
+  "com.mandubian"     %% "play-json-zipper"    % "1.2"
 )
 ```
 
