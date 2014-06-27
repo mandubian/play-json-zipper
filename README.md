@@ -34,6 +34,9 @@ Let's go to samples.
 We'll use following Json Object.
 
 ```scala
+scala> import play.api.libs.json._
+scala> import play.api.libs.json.monad.syntax._
+scala> import play.api.libs.json.extensions._
 scala> val js = Json.obj(
   "key1" -> Json.obj(
     "key11" -> "TO_FIND",
