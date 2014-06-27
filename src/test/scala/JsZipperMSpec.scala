@@ -316,6 +316,7 @@ object JsZipperMSpec extends Specification {
         zipper = res map (_.findNextByValue( _ == JsString("TO_FIND") ))
       }
       println(res.map(_.root))
+      success
     }
 
     "update by path" in {

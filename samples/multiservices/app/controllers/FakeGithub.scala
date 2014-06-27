@@ -11,7 +11,7 @@ import play.api.libs.ws._
 import play.api.libs.oauth._
 
 import play.api.libs.json._
-import play.api.libs.json.syntax._
+import play.api.libs.json.monad.syntax._
 import play.api.libs.json.extensions._
 
 

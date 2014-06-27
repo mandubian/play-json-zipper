@@ -2,7 +2,7 @@ organization := "com.mandubian"
 
 name    := "play-json-zipper"
 
-version := "1.1"
+version := "1.2"
 
 resolvers ++= Seq(
   "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
@@ -10,11 +10,11 @@ resolvers ++= Seq(
   "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
 )
 
-scalaVersion := "2.10.2"
+scalaVersion := "2.10.4"
 
 libraryDependencies ++= Seq(
-  "com.typesafe.play"   %% "play-json"  % "2.2.0"          ,
-  "org.specs2"          %% "specs2"     % "1.13"   % "test",
+  "com.typesafe.play"   %% "play-json"  % "2.2.2"          ,
+  "org.specs2"          %% "specs2"     % "2.3.12"   % "test",
   "junit"                % "junit"      % "4.8"    % "test"
 )
 

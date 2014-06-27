@@ -441,6 +441,7 @@ object JsZipperSpec extends Specification {
       }
 
       println(res.root)
+      success
     }
 
     "foreach" in {
@@ -456,6 +457,7 @@ object JsZipperSpec extends Specification {
       )
 
       JsZipper(js).foreach( x => println("foreach:"+x) )
+      success
     }
 
     "withFilter/mapThrough" in {
