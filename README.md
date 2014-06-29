@@ -23,7 +23,7 @@ _Please note, `JsZipper` is not an end in itself but a tool useful to provide ne
 resolvers += "mandubian maven bintray" at "http://dl.bintray.com/mandubian/maven"
 
 libraryDependencies ++= Seq(
-  "com.mandubian"     %% "play-json-zipper"    % "1.1"
+  "com.mandubian"     %% "play-json-zipper"    % "1.2"
 )
 ```
 
@@ -34,6 +34,9 @@ Let's go to samples.
 We'll use following Json Object.
 
 ```scala
+scala> import play.api.libs.json._
+scala> import play.api.libs.json.monad.syntax._
+scala> import play.api.libs.json.extensions._
 scala> val js = Json.obj(
   "key1" -> Json.obj(
     "key11" -> "TO_FIND",
