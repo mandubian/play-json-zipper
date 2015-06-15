@@ -76,7 +76,7 @@ res2: play.api.libs.json.JsValue = {"key1":{"key11":"TO_FIND"},"key2":123,"key3"
 ## Finding paths/values according to a filter
 
 ```scala
-scala> js.findAll( _ == JsString("TO_FIND") ).toList
+scala> js.findAll( (_,v) => v == JsString("TO_FIND") ).toList
 res5: List[(play.api.libs.json.JsPath, play.api.libs.json.JsValue)] = List(
   (/key1/key11,"TO_FIND"), 
   (/key4(0),"TO_FIND"), 
